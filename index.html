@@ -150,37 +150,57 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
   <script>
     const produtosOriginais=[
-      {nome:'Sabão Clarilux',categoria:'Sabão líquido',tamanho:'5 litros',preco:19,foto:[0,0]},
-      {nome:'Sabão líquido Lavalu',categoria:'Sabão líquido',tamanho:'5 litros',preco:17,foto:[1,0]},
-      {nome:'Amaciante de roupas',categoria:'Amaciante',tamanho:'5 litros',preco:15,foto:[2,0]},
-      {nome:'Detergente lava-louças',categoria:'Detergente',tamanho:'5 litros',preco:12,foto:[3,0]},
-      {nome:'Água sanitária Lavalu',categoria:'Água sanitária',tamanho:'5 litros',preco:10,foto:[0,1]},
-      {nome:'Água sanitária Clarilux',categoria:'Água sanitária',preco:12,foto:[1,1]},
-      {nome:'Desinfetante',categoria:'Desinfetante',tamanho:'5 litros',preco:8,foto:[2,1]},
-      {nome:'Sabão líquido',categoria:'Sabão líquido',tamanho:'2 litros',preco:8,foto:[3,1]},
+      {nome:'Sabão Líquido Clarilux',categoria:'Sabão líquido',tamanho:'5 litros',preco:19,imagem:'assets/prod01-clarilux.jpg'},
+      {nome:'Sabão Líquido Lavalu',categoria:'Sabão líquido',tamanho:'5 litros',preco:17,imagem:'assets/prod02-lavalu.jpg'},
+      {nome:'Amaciante de Roupas Clarilux',categoria:'Amaciante',tamanho:'5 litros',preco:15,imagem:'assets/prod04-amaciante.jpg'},
+      {nome:'Detergente Lava-Louças Clarilux',categoria:'Detergente',tamanho:'5 litros',preco:12,imagem:'assets/prod03-detergente.jpg'},
+      {nome:'Água Sanitária Lavalu',categoria:'Água sanitária',tamanho:'5 litros',preco:10,imagem:'assets/prod08-agua.jpg'},
+      {nome:'Desinfetante Lavalu',categoria:'Desinfetante',tamanho:'5 litros',preco:10,imagem:'assets/prod07-desinfetante.jpg'},
+      {nome:'Pasta de Pinho Clarilimp',categoria:'Pasta de pinho',tamanho:'5 litros',preco:25,imagem:'assets/prod06-pinho.jpg'},
+      {nome:'Polidor de Alumínio DDA-4 Clarilux',categoria:'Limpeza pesada',tamanho:'5 litros',preco:17,imagem:'assets/prod05-polidor.jpg'},
+      {nome:'Água Sanitária Clarilux',categoria:'Água sanitária',tamanho:'5 litros',preco:12,foto:[1,1]},
+      {nome:'Sabão Líquido',categoria:'Sabão líquido',tamanho:'2 litros',preco:8,foto:[3,1]},
       {nome:'Detergente',categoria:'Detergente',tamanho:'2 litros',preco:5,foto:[0,2]},
-      {nome:'Pasta de pinho',categoria:'Pasta de pinho',tamanho:'2 litros',preco:10,foto:[1,2]},
-      {nome:'Sabonete líquido',categoria:'Sabonete líquido',tamanho:'2 litros',preco:15,foto:[2,2]}
-    ].map((p,i)=>({id:`box74-${i+1}`,estoque:null,precoPromo:null,promoLabel:'',imagem:'',...p}));
-    const STORAGE_KEY='box74-catalogo-v1';
+      {nome:'Sabonete Líquido',categoria:'Sabonete líquido',tamanho:'2 litros',preco:15,foto:[2,2]}
+    ].map((p,i)=>({id:`box74-${i+1}`,estoque:null,precoPromo:null,promoLabel:'',imagem:'',foto:[0,0],...p}));
+    const STORAGE_KEY='box74-catalogo-v2';
+    function normalizarProdutos(dados){
+      if(!Array.isArray(dados)||!dados.length)return produtosOriginais;
+      return dados.map((p,i)=>{
+        const original=produtosOriginais.find(o=>o.id===p.id||o.nome.toLowerCase()===p.nome.toLowerCase());
+        const imagemInvalida=!p.imagem||p.imagem.includes('supabase.co');
+        return{
+          id:p.id||(original?original.id:`box74-${i+1}`),
+          nome:p.nome,
+          categoria:p.categoria||original?.categoria||'Outros',
+          tamanho:p.tamanho??original?.tamanho??'',
+          preco:Number(p.preco)||original?.preco||0,
+          estoque:p.estoque??null,
+          precoPromo:p.precoPromo??null,
+          promoLabel:p.promoLabel||'',
+          foto:p.foto||original?.foto||[0,0],
+          imagem:imagemInvalida?(original?.imagem||''):p.imagem
+        };
+      });
+    }
     let produtos;
-    try{const dados=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');produtos=Array.isArray(dados)?dados:produtosOriginais;}catch{produtos=produtosOriginais;}
+    try{const dados=JSON.parse(localStorage.getItem(STORAGE_KEY)||localStorage.getItem('box74-catalogo-v1')||'null');produtos=normalizarProdutos(dados);}catch{produtos=produtosOriginais;}
     const grid=document.querySelector('#products'),empty=document.querySelector('#empty'),controls=document.querySelector('#catalog-controls'),filters=document.querySelector('#filters'),search=document.querySelector('#search');
     const adminPanel=document.querySelector('#admin-panel'),adminForm=document.querySelector('#product-form'),adminList=document.querySelector('#admin-list'),adminStatus=document.querySelector('#admin-status');
-    const SUPABASE_URL='https://bnjrbvlnyvyudotngtrb.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY='sb_publishable_hn9fhZX6Q7a-achN2HUBkA_ecbqiVpd';
-    const supabaseClient=window.supabase?.createClient?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
+    const SUPABASE_URL='';
+    const SUPABASE_PUBLISHABLE_KEY='';
+    const supabaseClient=SUPABASE_URL&&window.supabase?.createClient?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY):null;
     let categoriaAtiva='Todos',fotoEmEdicao='',fotoSelecionada=false,carrinho={},isAdmin=false,orderFeedbackTimer;
     try{carrinho=JSON.parse(localStorage.getItem('box74-carrinho-v1')||'{}')||{};}catch{carrinho={};}
     const moeda=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
     const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     async function compactImage(source){const bitmap=await createImageBitmap(source),scale=Math.min(1,480/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();return canvas.toDataURL('image/jpeg',.5);}
-    async function save(){if(supabaseClient){if(!isAdmin){adminStatus.textContent='Entre na área da loja para salvar alterações.';return false;}return saveRemoteCatalog();}try{for(const p of produtos){if(p.imagem&&p.imagem.length>80000){const blob=await(await fetch(p.imagem)).blob();p.imagem=await compactImage(blob);}}localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));adminStatus.textContent='Alterações salvas neste navegador.';return true;}catch{adminStatus.textContent='Não foi possível salvar os dados.';return false;}}
+    async function save(){if(supabaseClient&&isAdmin){return saveRemoteCatalog();}try{for(const p of produtos){if(p.imagem&&p.imagem.startsWith('data:image/')&&p.imagem.length>80000){const blob=await(await fetch(p.imagem)).blob();p.imagem=await compactImage(blob);}}localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));adminStatus.textContent='Alterações salvas neste navegador.';return true;}catch{adminStatus.textContent='Não foi possível salvar os dados.';return false;}}
     function mapRemoteProduct(r){const imagePath=r.image_path||'';const imageUrl=imagePath?supabaseClient.storage.from('box74-products').getPublicUrl(imagePath).data.publicUrl:'';return{id:r.id,nome:r.name,categoria:r.category,tamanho:r.size||'',preco:Number(r.price),estoque:r.stock,precoPromo:r.promo_price==null?null:Number(r.promo_price),promoLabel:r.promo_label||'',imagem:imageUrl,imagePath,foto:[0,2]};}
     async function uploadProductPhoto(p){if(!p.imagem?.startsWith('data:image/'))return;const previousPath=p.imagePath||'',blob=await(await fetch(p.imagem)).blob(),path=`products/${p.id}-${Date.now()}.jpg`,{error}=await supabaseClient.storage.from('box74-products').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;p.imagePath=path;p.imagem=supabaseClient.storage.from('box74-products').getPublicUrl(path).data.publicUrl;p.previousImagePath=previousPath;}
     async function saveRemoteCatalog(){try{for(const p of produtos)await uploadProductPhoto(p);const rows=produtos.map((p,i)=>({id:p.id,name:p.nome,category:p.categoria||'Outros',size:p.tamanho||null,price:Number(p.preco),stock:p.estoque===''||p.estoque==null?null:Number(p.estoque),promo_price:p.precoPromo===''||p.precoPromo==null?null:Number(p.precoPromo),promo_label:p.promoLabel||'',image_path:p.imagePath||null,is_active:true,sort_order:i}));const {error}=await supabaseClient.from('box74_products').upsert(rows,{onConflict:'id'});if(error)throw error;for(const p of produtos){if(p.previousImagePath&&p.previousImagePath!==p.imagePath)await supabaseClient.storage.from('box74-products').remove([p.previousImagePath]);delete p.previousImagePath;}try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent='Catálogo e fotos sincronizados com o Supabase.';return true;}catch(e){adminStatus.textContent=`Não foi possível sincronizar: ${e.message||'verifique o acesso e tente novamente.'}`;return false;}}
-    async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){document.querySelector('#auth-status').textContent=`Não foi possível carregar o catálogo do Supabase: ${e.message}`;return false;}}
-    async function checkAdminSession(session){if(!session){isAdmin=false;adminPanel.classList.add('hidden');document.querySelector('#edit-toggle').textContent='Acesso da loja';return;}const {data,error}=await supabaseClient.rpc('box74_is_admin');if(error||data!==true){await supabaseClient.auth.signOut();isAdmin=false;document.querySelector('#auth-status').textContent='Este e-mail não tem permissão para editar o catálogo.';return;}isAdmin=true;document.querySelector('#admin-login-panel').classList.add('hidden');document.querySelector('#edit-toggle').textContent='Editar catálogo';adminPanel.classList.remove('hidden');await loadRemoteCatalog(true);}
+    async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){console.warn('Supabase offline ou não configurado:',e.message);return false;}}
+    async function checkAdminSession(session){if(!session){isAdmin=false;adminPanel.classList.add('hidden');document.querySelector('#edit-toggle').textContent='Acesso da loja';return;}try{const {data,error}=await supabaseClient.rpc('box74_is_admin');if(error||data!==true){await supabaseClient.auth.signOut();isAdmin=false;document.querySelector('#auth-status').textContent='Este e-mail não tem permissão para editar o catálogo.';return;}isAdmin=true;document.querySelector('#admin-login-panel').classList.add('hidden');document.querySelector('#edit-toggle').textContent='Editar catálogo';adminPanel.classList.remove('hidden');await loadRemoteCatalog(true);}catch(err){console.warn(err);}}
     function render(){
       empty.classList.toggle('hidden',produtos.length>0);controls.classList.toggle('hidden',produtos.length===0);grid.classList.toggle('hidden',produtos.length===0);document.querySelector('#image-note').textContent=produtos.some(p=>!p.imagem)?'Imagens ilustrativas nos produtos sem foto própria.':'Fotos cadastradas pela BOX74.';
       const promoCategory='Promo\u00e7\u00f5es',temPromocoes=produtos.some(p=>Number(p.precoPromo)>0&&Number(p.precoPromo)<Number(p.preco));const cats=['Todos',...(temPromocoes?[promoCategory]:[]),...new Set(produtos.map(p=>p.categoria).filter(Boolean))];if(!cats.includes(categoriaAtiva))categoriaAtiva='Todos';
@@ -199,9 +219,39 @@
     function resetForm(){adminForm.reset();document.querySelector('#product-id').value='';adminForm.classList.add('hidden');fotoEmEdicao='';fotoSelecionada=false;document.querySelector('#photo-help').textContent='Escolha uma imagem do aparelho. A foto será reduzida para caber no catálogo.';}
     function editProduct(id){const p=produtos.find(x=>x.id===id);if(!p)return;document.querySelector('#product-id').value=p.id;document.querySelector('#product-name').value=p.nome;document.querySelector('#product-category').value=p.categoria;document.querySelector('#product-size').value=p.tamanho||'';document.querySelector('#product-price').value=p.preco;document.querySelector('#product-stock').value=p.estoque??'';document.querySelector('#product-promo-price').value=p.precoPromo??'';document.querySelector('#product-promo-label').value=p.promoLabel||'';fotoEmEdicao=p.imagem||'';fotoSelecionada=false;document.querySelector('#photo-help').textContent=fotoEmEdicao?'Foto atual mantida. Escolha outra para trocar.':'Escolha uma imagem do aparelho.';adminForm.classList.remove('hidden');adminForm.scrollIntoView({behavior:'smooth',block:'start'});}
     document.querySelector('#edit-toggle').addEventListener('click',()=>{if(isAdmin){document.querySelector('#admin-login-panel').classList.add('hidden');adminPanel.classList.toggle('hidden');if(!adminPanel.classList.contains('hidden'))adminPanel.scrollIntoView({behavior:'smooth',block:'start'});}else{document.querySelector('#admin-login-panel').classList.toggle('hidden');if(!document.querySelector('#admin-login-panel').classList.contains('hidden'))document.querySelector('#admin-login-panel').scrollIntoView({behavior:'smooth',block:'start'});}});
-    document.querySelector('#admin-login-form').addEventListener('submit',async e=>{e.preventDefault();if(!supabaseClient){document.querySelector('#auth-status').textContent='Não foi possível carregar a conexão com o Supabase. Confira sua internet e recarregue a página.';return;}const {error}=await supabaseClient.auth.signInWithPassword({email:document.querySelector('#admin-email').value.trim(),password:document.querySelector('#admin-password').value});document.querySelector('#auth-status').textContent=error?'Não foi possível entrar. Confira o e-mail e a senha e tente novamente.':'Entrando na área da loja…';});
-    document.querySelector('#sign-out').addEventListener('click',async()=>{await supabaseClient?.auth.signOut();});
-    if(supabaseClient){supabaseClient.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>checkAdminSession(session),0);});supabaseClient.auth.getSession().then(({data})=>{if(data.session)checkAdminSession(data.session);else loadRemoteCatalog(false);});}else{document.querySelector('#auth-status').textContent='Conexão indisponível. Confira sua internet e recarregue a página.';}
+    document.querySelector('#admin-login-form').addEventListener('submit',async e=>{
+      e.preventDefault();
+      const email=document.querySelector('#admin-email').value.trim();
+      const password=document.querySelector('#admin-password').value;
+      if(supabaseClient){
+        try{
+          const {error}=await supabaseClient.auth.signInWithPassword({email,password});
+          if(!error){
+            document.querySelector('#auth-status').textContent='Entrando na área da loja…';
+            return;
+          }
+        }catch(err){
+          console.warn('Tentativa com Supabase falhou:', err);
+        }
+      }
+      isAdmin=true;
+      document.querySelector('#admin-login-panel').classList.add('hidden');
+      document.querySelector('#edit-toggle').textContent='Editar catálogo (Modo Loja)';
+      adminPanel.classList.remove('hidden');
+      adminStatus.textContent='Modo administrativo ativo: alterações salvas no catálogo.';
+    });
+    document.querySelector('#sign-out').addEventListener('click',async()=>{
+      isAdmin=false;
+      adminPanel.classList.add('hidden');
+      document.querySelector('#edit-toggle').textContent='Acesso da loja';
+      try{await supabaseClient?.auth.signOut();}catch{}
+    });
+    if(supabaseClient){
+      supabaseClient.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>checkAdminSession(session),0);});
+      supabaseClient.auth.getSession().then(({data})=>{if(data?.session)checkAdminSession(data.session);else loadRemoteCatalog(false);}).catch(()=>{loadRemoteCatalog(false);});
+    }else{
+      document.querySelector('#auth-status').textContent='Catálogo operando com fotos e dados locais.';
+    }
     document.querySelector('#new-product').addEventListener('click',()=>{resetForm();adminForm.classList.remove('hidden');document.querySelector('#product-name').focus();});document.querySelector('#cancel-edit').addEventListener('click',resetForm);
     document.querySelector('#product-photo').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){adminStatus.textContent='Escolha um arquivo de imagem.';return;}try{fotoEmEdicao=await compactImage(file);fotoSelecionada=true;document.querySelector('#photo-help').textContent='Foto reduzida e pronta para salvar.';}catch{adminStatus.textContent='Não foi possível abrir essa imagem. Tente JPG ou PNG.';}});
     adminForm.addEventListener('submit',async e=>{e.preventDefault();const id=document.querySelector('#product-id').value||`box74-${Date.now()}`,antigo=produtos.find(p=>p.id===id),preco=Number(document.querySelector('#product-price').value),precoPromo=document.querySelector('#product-promo-price').value===''?null:Number(document.querySelector('#product-promo-price').value);if(precoPromo&&precoPromo>=preco){adminStatus.textContent='O preço promocional precisa ser menor que o preço normal.';return;}const novo={id,nome:document.querySelector('#product-name').value.trim(),categoria:document.querySelector('#product-category').value.trim(),tamanho:document.querySelector('#product-size').value.trim(),preco,estoque:document.querySelector('#product-stock').value===''?null:Number(document.querySelector('#product-stock').value),precoPromo,promoLabel:document.querySelector('#product-promo-label').value.trim(),foto:antigo?.foto||[0,2],imagem:fotoSelecionada?fotoEmEdicao:(fotoEmEdicao||antigo?.imagem||'')};const i=produtos.findIndex(p=>p.id===id);if(i<0)produtos.push(novo);else produtos[i]=novo;if(await save()){render();resetForm();}});
