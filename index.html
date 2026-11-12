@@ -104,7 +104,7 @@
     </div>
   </header>
   <main class="wrap" id="catalogo">
-    <div class="admin-toolbar" style="justify-content:flex-end"><button class="admin-toggle" id="edit-toggle" type="button">Acesso da loja</button></div>
+    <div class="admin-toolbar hidden" id="admin-toggle-wrap" style="justify-content:flex-end"><button class="admin-toggle" id="edit-toggle" type="button">Editar catálogo</button></div>
     <section class="admin-panel hidden" id="admin-login-panel" aria-label="Acesso administrativo">
       <h3>Acesso restrito da loja</h3><p class="admin-help">Somente a responsável autorizada da BOX74 pode entrar para editar o catálogo. Clientes podem consultar produtos e fazer pedidos sem login.</p>
       <form class="admin-form" id="admin-login-form"><label>E-mail<input id="admin-email" type="email" autocomplete="username" required></label><label>Senha<input id="admin-password" type="password" autocomplete="current-password" minlength="8" required></label><div class="admin-buttons wide"><button class="admin-action admin-save" type="submit">Entrar</button></div></form>
@@ -159,7 +159,7 @@
       <p class="dialog-note">O pedido só será enviado quando você confirmar a mensagem no WhatsApp.</p>
     </form>
   </dialog>
-  <footer><div class="wrap foot"><b>BOX74</b><span>Catálogo digital · Produtos de limpeza</span></div></footer>
+  <footer><div class="wrap foot"><b id="secret-admin-trigger" style="cursor:default;user-select:none" title="BOX74">BOX74</b><span>Catálogo digital · Produtos de limpeza</span></div></footer>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.min.js"></script>
   <script>
     const produtosOriginais=[
@@ -233,7 +233,33 @@
     async function uploadProductPhoto(p){if(!p.imagem?.startsWith('data:image/'))return;const previousPath=p.imagePath||'',blob=await(await fetch(p.imagem)).blob(),path=`products/${p.id}-${Date.now()}.jpg`,{error}=await supabaseClient.storage.from('box74-products').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;p.imagePath=path;p.imagem=supabaseClient.storage.from('box74-products').getPublicUrl(path).data.publicUrl;p.previousImagePath=previousPath;}
     async function saveRemoteCatalog(){try{for(const p of produtos)await uploadProductPhoto(p);const rows=produtos.map((p,i)=>({id:p.id,name:p.nome,category:p.categoria||'Outros',size:p.tamanho||null,price:Number(p.preco),stock:p.estoque===''||p.estoque==null?null:Number(p.estoque),promo_price:p.precoPromo===''||p.precoPromo==null?null:Number(p.precoPromo),promo_label:p.promoLabel||'',image_path:p.imagePath||null,is_active:true,sort_order:i}));const {error}=await supabaseClient.from('box74_products').upsert(rows,{onConflict:'id'});if(error)throw error;for(const p of produtos){if(p.previousImagePath&&p.previousImagePath!==p.imagePath)await supabaseClient.storage.from('box74-products').remove([p.previousImagePath]);delete p.previousImagePath;}try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent='Catálogo e fotos sincronizados com o Supabase.';return true;}catch(e){adminStatus.textContent=`Não foi possível sincronizar: ${e.message||'verifique o acesso e tente novamente.'}`;return false;}}
     async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){console.warn('Supabase offline ou não configurado:',e.message);return false;}}
-    async function checkAdminSession(session){if(!session){isAdmin=false;adminPanel.classList.add('hidden');document.querySelector('#edit-toggle').textContent='Acesso da loja';return;}try{const {data,error}=await supabaseClient.rpc('box74_is_admin');if(error||data!==true){await supabaseClient.auth.signOut();isAdmin=false;document.querySelector('#auth-status').textContent='Este e-mail não tem permissão para editar o catálogo.';return;}isAdmin=true;document.querySelector('#admin-login-panel').classList.add('hidden');document.querySelector('#edit-toggle').textContent='Editar catálogo';adminPanel.classList.remove('hidden');await loadRemoteCatalog(true);}catch(err){console.warn(err);}}
+    const adminToggleWrap=document.querySelector('#admin-toggle-wrap');
+    function showAdminAccess(){adminToggleWrap?.classList.remove('hidden');}
+    function hideAdminAccess(){adminToggleWrap?.classList.add('hidden');adminPanel?.classList.add('hidden');document.querySelector('#admin-login-panel')?.classList.add('hidden');localStorage.removeItem('box74_admin_device');}
+    async function checkAdminSession(session){
+      if(!session){
+        isAdmin=false;
+        adminPanel.classList.add('hidden');
+        if(localStorage.getItem('box74_admin_device')!=='true'){hideAdminAccess();}
+        return;
+      }
+      try{
+        const {data,error}=await supabaseClient.rpc('box74_is_admin');
+        if(error||data!==true){
+          await supabaseClient.auth.signOut();
+          isAdmin=false;
+          document.querySelector('#auth-status').textContent='Este e-mail não tem permissão para editar o catálogo.';
+          return;
+        }
+        isAdmin=true;
+        showAdminAccess();
+        localStorage.setItem('box74_admin_device','true');
+        document.querySelector('#admin-login-panel').classList.add('hidden');
+        document.querySelector('#edit-toggle').textContent='Editar catálogo';
+        adminPanel.classList.remove('hidden');
+        await loadRemoteCatalog(true);
+      }catch(err){console.warn(err);}
+    }
     function render(){
       empty.classList.toggle('hidden',produtos.length>0);controls.classList.toggle('hidden',produtos.length===0);grid.classList.toggle('hidden',produtos.length===0);document.querySelector('#image-note').textContent=produtos.some(p=>!p.imagem)?'Imagens ilustrativas nos produtos sem foto própria.':'Fotos cadastradas pela BOX74.';
       const promoCategory='Promo\u00e7\u00f5es',temPromocoes=produtos.some(p=>Number(p.precoPromo)>0&&Number(p.precoPromo)<Number(p.preco));const cats=['Todos',...(temPromocoes?[promoCategory]:[]),...new Set(produtos.map(p=>p.categoria).filter(Boolean))];if(!cats.includes(categoriaAtiva))categoriaAtiva='Todos';
@@ -275,16 +301,47 @@
         }
       }
       isAdmin=true;
+      showAdminAccess();
+      localStorage.setItem('box74_admin_device','true');
       document.querySelector('#admin-login-panel').classList.add('hidden');
-      document.querySelector('#edit-toggle').textContent='Editar catálogo (Modo Local)';
+      document.querySelector('#edit-toggle').textContent='Editar catálogo';
       adminPanel.classList.remove('hidden');
       adminStatus.textContent='Modo local ativo: alterações salvas no navegador.';
     });
     document.querySelector('#sign-out').addEventListener('click',async()=>{
       isAdmin=false;
-      adminPanel.classList.add('hidden');
-      document.querySelector('#edit-toggle').textContent='Acesso da loja';
+      hideAdminAccess();
       try{await supabaseClient?.auth.signOut();}catch{}
+    });
+    // Acesso exclusivo do lojista: via URL (?admin, ?loja, #admin) ou 3 toques no rodapé
+    const urlParams=new URLSearchParams(window.location.search);
+    const hasAdminParam=urlParams.has('admin')||urlParams.has('loja')||urlParams.has('gerente')||window.location.hash==='#admin';
+    if(hasAdminParam||localStorage.getItem('box74_admin_device')==='true'){
+      showAdminAccess();
+      if(hasAdminParam&&!isAdmin){
+        document.querySelector('#admin-login-panel')?.classList.remove('hidden');
+        document.querySelector('#admin-login-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+      }
+    }
+    let secretClicks=0,secretTimer=null;
+    document.querySelector('#secret-admin-trigger')?.addEventListener('click',()=>{
+      secretClicks++;
+      clearTimeout(secretTimer);
+      if(secretClicks>=3){
+        secretClicks=0;
+        showAdminAccess();
+        localStorage.setItem('box74_admin_device','true');
+        if(isAdmin){
+          adminPanel.classList.toggle('hidden');
+          if(!adminPanel.classList.contains('hidden'))adminPanel.scrollIntoView({behavior:'smooth',block:'start'});
+        }else{
+          document.querySelector('#admin-login-panel')?.classList.remove('hidden');
+          document.querySelector('#admin-login-panel')?.scrollIntoView({behavior:'smooth',block:'start'});
+          document.querySelector('#admin-email')?.focus();
+        }
+      }else{
+        secretTimer=setTimeout(()=>{secretClicks=0;},1200);
+      }
     });
     if(supabaseClient){
       supabaseClient.auth.onAuthStateChange((_event,session)=>{setTimeout(()=>checkAdminSession(session),0);});
