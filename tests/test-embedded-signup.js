@@ -1,0 +1,346 @@
+// =====================================================================
+// BOX74 - Testes da Integração Meta Embedded Signup & Coexistência
+// Validação de Troca de Código por Token, Validação Estrita do Número
+// +55 84 98189-6369, Coexistência com App móvel e Endpoints
+// =====================================================================
+
+const assert = require('assert');
+const http = require('http');
+
+const { config } = require('../src/config');
+const { MetaEmbeddedSignupService } = require('../src/services/meta-embedded-signup');
+const { CredentialsStore } = require('../src/services/credentials-store');
+const { CoexistenceService } = require('../src/services/coexistence-service');
+const { WhatsAppAgent } = require('../src/whatsapp-agent');
+const { createWebhookServer } = require('../src/whatsapp-webhook');
+
+let passedTests = 0;
+let failedTests = 0;
+
+function it(desc, fn) {
+  try {
+    fn();
+    console.log(`[PASS] ${desc}`);
+    passedTests++;
+  } catch (err) {
+    console.error(`[FAIL] ${desc}: ${err.message}`);
+    failedTests++;
+  }
+}
+
+async function itAsync(desc, fn) {
+  try {
+    await fn();
+    console.log(`[PASS] ${desc}`);
+    passedTests++;
+  } catch (err) {
+    console.error(`[FAIL] ${desc}: ${err.message}`);
+    failedTests++;
+  }
+}
+
+async function runTests() {
+  console.log('=== TESTES META EMBEDDED SIGNUP & COEXISTÊNCIA BOX74 ===\n');
+
+  const OFFICIAL_PHONE = '5584981896369';
+  const OFFICIAL_DISPLAY = '+55 84 98189-6369';
+
+  // -------------------------------------------------------------
+  // 1. VALIDAÇÃO DE NÚMERO OFICIAL CONFIGURADO
+  // -------------------------------------------------------------
+  console.log('--- 1. Regras do Número Oficial ---');
+  it('Configuração aponta estritamente para o número oficial +55 84 98189-6369', () => {
+    assert.strictEqual(config.officialPhone.number, OFFICIAL_PHONE);
+    assert.strictEqual(config.officialPhone.display, OFFICIAL_DISPLAY);
+  });
+
+  // -------------------------------------------------------------
+  // 2. EMBEDDED SIGNUP SERVICE & VALIDAÇÃO ESTRITA
+  // -------------------------------------------------------------
+  console.log('\n--- 2. Meta Embedded Signup Service & Validação ---');
+  const mockTransport = {
+    graphRequest: async (path, method, body, token) => {
+      // Troca de código por token
+      if (path.includes('/oauth/access_token')) {
+        if (path.includes('code=code_valido_meta')) {
+          return {
+            statusCode: 200,
+            data: {
+              access_token: 'EAAB_token_sistema_meta_permanente',
+              token_type: 'bearer',
+              expires_in: 5184000
+            }
+          };
+        } else {
+          return {
+            statusCode: 400,
+            data: { error: { message: 'Código de autorização inválido ou expirado' } }
+          };
+        }
+      }
+
+      // Consulta de número oficial autorizado (+55 84 98189-6369)
+      if (path.includes('/phone_123_oficial')) {
+        return {
+          statusCode: 200,
+          data: {
+            id: 'phone_123_oficial',
+            display_phone_number: '+55 84 98189-6369',
+            verified_name: 'BOX74 MATERIAIS DE LIMPEZA',
+            quality_rating: 'GREEN',
+            platform_type: 'CLOUD_API_COEXISTENCE'
+          }
+        };
+      }
+
+      // Consulta de número divergente (tentativa de uso de outro número)
+      if (path.includes('/phone_999_divergente')) {
+        return {
+          statusCode: 200,
+          data: {
+            id: 'phone_999_divergente',
+            display_phone_number: '+55 84 99941-5379',
+            verified_name: 'Numero Antigo',
+            quality_rating: 'GREEN'
+          }
+        };
+      }
+
+      // Subscrição de webhooks no WABA
+      if (path.includes('/waba_box74_123/subscribed_apps')) {
+        return {
+          statusCode: 200,
+          data: { success: true }
+        };
+      }
+
+      return { statusCode: 404, data: { error: 'Not found' } };
+    }
+  };
+
+  const store = new CredentialsStore();
+  const signupService = new MetaEmbeddedSignupService({
+    appId: '1234567890',
+    appSecret: 'segredo_app_meta',
+    officialNumber: OFFICIAL_PHONE,
+    credentialsStore: store,
+    mockTransport
+  });
+
+  await itAsync('Troca código de autorização válido por token permanente da Meta', async () => {
+    const res = await signupService.exchangeCodeForToken('code_valido_meta');
+    assert.strictEqual(res.success, true);
+    assert.strictEqual(res.accessToken, 'EAAB_token_sistema_meta_permanente');
+  });
+
+  await itAsync('Rejeita código de autorização inválido ou expirado', async () => {
+    const res = await signupService.exchangeCodeForToken('code_invalido');
+    assert.strictEqual(res.success, false);
+    assert.ok(res.error);
+  });
+
+  await itAsync('Valida com sucesso número correspondente ao oficial (+55 84 98189-6369)', async () => {
+    const res = await signupService.validatePhoneNumber('phone_123_oficial', 'token_dummy');
+    assert.strictEqual(res.valid, true);
+    assert.strictEqual(res.displayPhoneNumber, '+55 84 98189-6369');
+    assert.strictEqual(res.coexistenceEligible, true);
+  });
+
+  await itAsync('Bloqueia estritamente tentativa de conectar número divergente', async () => {
+    const res = await signupService.validatePhoneNumber('phone_999_divergente', 'token_dummy');
+    assert.strictEqual(res.valid, false);
+    assert.ok(res.error.includes('diverge do número oficial autorizado'));
+  });
+
+  await itAsync('Executa pipeline completo do Embedded Signup e persiste credenciais', async () => {
+    const result = await signupService.processEmbeddedSignup({
+      code: 'code_valido_meta',
+      wabaId: 'waba_box74_123',
+      phoneNumberId: 'phone_123_oficial'
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.officialPhone, OFFICIAL_DISPLAY);
+    assert.strictEqual(result.coexistenceActive, true);
+
+    // Verifica persistência no CredentialsStore
+    const saved = await store.getCredentials();
+    assert.strictEqual(saved.phone_number, OFFICIAL_PHONE);
+    assert.strictEqual(saved.phone_number_id, 'phone_123_oficial');
+    assert.strictEqual(saved.waba_id, 'waba_box74_123');
+  });
+
+  // -------------------------------------------------------------
+  // 3. COEXISTÊNCIA COM WHATSAPP BUSINESS APP
+  // -------------------------------------------------------------
+  console.log('\n--- 3. Coexistência com App no Smartphone ---');
+  let silencedPhone = null;
+  const mockHandoff = {
+    triggerHandoff: async (phone, details) => {
+      silencedPhone = phone;
+      return { silenced: true };
+    }
+  };
+
+  const coexistence = new CoexistenceService({
+    officialNumber: OFFICIAL_PHONE,
+    humanHandoff: mockHandoff,
+    enabled: true
+  });
+
+  it('Identifica evento com isEcho = true como intervenção humana', () => {
+    const echoEvent = { isEcho: true, from: OFFICIAL_PHONE, to: '5585991112222', text: 'Oi, estou respondendo pelo celular' };
+    assert.strictEqual(coexistence.isHumanEcho(echoEvent), true);
+  });
+
+  it('Identifica mensagem enviada do número oficial para um cliente como intervenção humana', () => {
+    const outEvent = { from: OFFICIAL_PHONE, to: '5585991112222', text: 'Mensagem enviada do celular da loja' };
+    assert.strictEqual(coexistence.isHumanEcho(outEvent), true);
+  });
+
+  it('Não confunde mensagem de cliente como intervenção humana', () => {
+    const inEvent = { from: '5585991112222', to: OFFICIAL_PHONE, text: 'Quero comprar sabão' };
+    assert.strictEqual(coexistence.isHumanEcho(inEvent), false);
+  });
+
+  await itAsync('handleHumanIntervention silencia o bot para o cliente atendido no celular', async () => {
+    let mockConversation = { phone: '5585991112222', state: 'atendimento_ia' };
+    const mockAgent = {
+      getConversation: async () => mockConversation,
+      saveConversation: async (c) => { mockConversation = c; },
+      recordOutgoingMessage: async () => {}
+    };
+
+    const echoEvent = {
+      isEcho: true,
+      from: OFFICIAL_PHONE,
+      to: '5585991112222',
+      text: 'Olá, sou a dona da BOX74 e vou continuar seu atendimento!'
+    };
+
+    const res = await coexistence.handleHumanIntervention(echoEvent, mockAgent);
+    assert.strictEqual(res.handled, true);
+    assert.strictEqual(res.action, 'bot_silenced');
+    assert.strictEqual(mockConversation.state, 'transf_humano');
+    assert.strictEqual(silencedPhone, '5585991112222');
+    assert.strictEqual(coexistence.isCustomerUnderHumanWindow('5585991112222'), true);
+  });
+
+  // -------------------------------------------------------------
+  // 4. ENDPOINTS HTTP DO SERVIDOR WEBHOOK
+  // -------------------------------------------------------------
+  console.log('\n--- 4. Endpoints HTTP de Embedded Signup & Coexistência ---');
+  const agent = new WhatsAppAgent();
+  const server = createWebhookServer(agent, {
+    credentialsStore: store,
+    coexistenceService: coexistence,
+    mockEmbeddedTransport: mockTransport
+  });
+
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const serverPort = server.address().port;
+
+  function doReq(path, method = 'GET', body = null) {
+    return new Promise((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: serverPort,
+        path,
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      }, (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          let parsed = null;
+          try { parsed = JSON.parse(data); } catch (e) { parsed = data; }
+          resolve({ statusCode: res.statusCode, data: parsed });
+        });
+      });
+      req.on('error', reject);
+      if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
+      req.end();
+    });
+  }
+
+  await itAsync('GET /api/meta/embedded-signup/config retorna dados seguros para FB Login SDK', async () => {
+    const res = await doReq('/api/meta/embedded-signup/config');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
+    assert.strictEqual(res.data.coexistenceSupported, true);
+  });
+
+  await itAsync('GET /api/meta/coexistence/status retorna status de prontidão da coexistência', async () => {
+    const res = await doReq('/api/meta/coexistence/status');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.status, 'coexistence_ready');
+    assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
+  });
+
+  await itAsync('GET /api/meta/credentials/status retorna metadados públicos sem expor segredos', async () => {
+    const res = await doReq('/api/meta/credentials/status');
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
+    assert.strictEqual(res.data.configured, true);
+    assert.strictEqual(res.data.token, undefined, 'Tokens secretos NUNCA devem ser expostos na API');
+  });
+
+  await itAsync('POST /api/meta/embedded-signup rejeita requisição sem código ou phoneId', async () => {
+    const res = await doReq('/api/meta/embedded-signup', 'POST', {});
+    assert.strictEqual(res.statusCode, 400);
+    assert.strictEqual(res.data.success, false);
+  });
+
+  await itAsync('POST /api/meta/embedded-signup processa autorização e atualiza credenciais', async () => {
+    const res = await doReq('/api/meta/embedded-signup', 'POST', {
+      code: 'code_valido_meta',
+      wabaId: 'waba_box74_123',
+      phoneNumberId: 'phone_123_oficial'
+    });
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.success, true);
+    assert.strictEqual(res.data.officialPhone, OFFICIAL_DISPLAY);
+  });
+
+  await itAsync('POST /webhook com payload de echo da coexistência detecta e silencia sem acionar IA', async () => {
+    const echoPayload = {
+      entry: [{
+        changes: [{
+          value: {
+            messaging_product: 'whatsapp',
+            metadata: { display_phone_number: OFFICIAL_PHONE, phone_number_id: 'phone_123_oficial' },
+            message_echoes: [{
+              id: 'wamid.echo.test.1',
+              from: OFFICIAL_PHONE,
+              to: '5585977778888',
+              timestamp: '1700000000',
+              type: 'text',
+              text: { body: 'Olá! Estou respondendo aqui pelo celular da loja.' }
+            }]
+          }
+        }]
+      }]
+    };
+
+    const res = await doReq('/webhook', 'POST', echoPayload);
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.data.coexistence, true);
+    assert.strictEqual(res.data.result.action, 'bot_silenced');
+  });
+
+  server.close();
+
+  console.log('\n========================================');
+  console.log(`TOTAL TESTES EMBEDDED SIGNUP: ${passedTests} passaram, ${failedTests} falharam.`);
+  console.log('========================================');
+
+  if (failedTests > 0) {
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  runTests();
+}
+
+module.exports = { runTests };

@@ -5,6 +5,7 @@
 
 const https = require('https');
 const crypto = require('crypto');
+const { config } = require('../config');
 
 class MetaWhatsAppAdapter {
   constructor(options = {}) {
@@ -12,6 +13,7 @@ class MetaWhatsAppAdapter {
     this.phoneNumberId = options.phoneNumberId || '';
     this.appSecret = options.appSecret || '';
     this.apiVersion = options.apiVersion || 'v21.0';
+    this.officialNumber = (options.officialNumber || config.officialPhone.number).replace(/\D/g, '');
     this.mockTransport = options.mockTransport || null; // Para testes unitários
   }
 
@@ -53,6 +55,22 @@ class MetaWhatsAppAdapter {
       const entry = payload?.entry?.[0];
       const change = entry?.changes?.[0];
       const value = change?.value;
+
+      // Detecção de Message Echoes (Coexistência com WhatsApp Business App no celular)
+      if (value?.message_echoes && value.message_echoes[0]) {
+        const echoMsg = value.message_echoes[0];
+        return {
+          isEcho: true,
+          isStatus: false,
+          messageId: echoMsg.id,
+          from: echoMsg.from,
+          to: echoMsg.to,
+          text: echoMsg.text?.body || '',
+          timestamp: echoMsg.timestamp ? parseInt(echoMsg.timestamp, 10) * 1000 : Date.now(),
+          type: echoMsg.type || 'text',
+          raw: echoMsg
+        };
+      }
 
       if (!value || !value.messages || !value.messages[0]) {
         // Suporte a formato direto / simplificado (testes e integrações diretas)

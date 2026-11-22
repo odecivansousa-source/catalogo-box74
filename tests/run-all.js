@@ -10,6 +10,7 @@ const tests = [
   { name: 'Módulo Financeiro, Custos e Despesas', file: 'test-finance-module.js' },
   { name: 'Cérebro do Agente WhatsApp BOX74', file: 'test-whatsapp-agent.js' },
   { name: 'Infraestrutura de Produção e Webhooks', file: 'test-production-infrastructure.js' },
+  { name: 'Meta Embedded Signup e Coexistência', file: 'test-embedded-signup.js' },
   { name: 'Integração Real Supabase', file: 'test-integration.js' }
 ];
 

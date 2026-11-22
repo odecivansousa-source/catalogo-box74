@@ -1,52 +1,72 @@
 # GUIA DE PUBLICAÇÃO E ATIVAÇÃO EM PRODUÇÃO — AGENTE WHATSAPP BOX74
 
-Este documento descreve o passo a passo completo para o proprietário e administrador da **BOX74** ativar o atendente virtual no WhatsApp em ambiente de produção com alta disponibilidade, segurança criptográfica e resiliência.
+Este documento descreve o passo a passo completo para o proprietário e administrador da **BOX74** ativar o atendente virtual no WhatsApp em ambiente de produção com alta disponibilidade, segurança criptográfica, fluxo **Meta Embedded Signup** e **Modo de Coexistência** com o aplicativo WhatsApp Business no celular.
+
+> **Número Oficial Exclusivo da BOX74:** `+55 84 98189-6369` (5584981896369)
 
 ---
 
-## 1. Visão Geral da Arquitetura
+## 1. Visão Geral da Arquitetura e Coexistência
 
-O sistema opera com uma arquitetura modular e desacoplada:
+O sistema opera com uma arquitetura modular preparada para coexistência híbrida:
 
-- **Motor Central (`src/whatsapp-agent.js`)**: Compreensão de linguagem natural (NLU), controle do catálogo oficial de 33 produtos, validação de estoque em tempo real, carrinho conversacional e regras de negócio.
-- **Serviço de Webhook (`src/whatsapp-webhook.js`)**: Servidor HTTP nativo com validação criptográfica de assinaturas HMAC-SHA256 (`X-Hub-Signature-256`), rotas de health-check e tratamento de eventos.
+- **Motor Central (`src/whatsapp-agent.js`)**: Compreensão de linguagem natural (NLU), controle do catálogo oficial de 33 produtos, validação de estoque em tempo real, carrinho conversacional e regras comerciais.
+- **Serviço de Coexistência (`src/services/coexistence-service.js`)**: Monitora eventos de `message_echoes` enviados pelo WhatsApp Business App no smartphone. Quando a proprietária ou atendente responde a um cliente diretamente pelo celular, o bot detecta a mensagem e silencia a IA automaticamente para aquele cliente por 24h (ou até comando `MENU`), garantindo que a IA nunca interfira na conversa humana.
+- **Serviço Embedded Signup (`src/services/meta-embedded-signup.js`)**: Realiza a troca segura do código de autorização OAuth por token de acesso da Meta e valida estritamente que o número conectado seja `+55 84 98189-6369`.
+- **Armazenamento Seguro de Credenciais (`src/services/credentials-store.js`)**: Gerencia o WABA ID, Phone Number ID e status de coexistência no Supabase com isolamento por RLS.
+- **Serviço de Webhook (`src/whatsapp-webhook.js`)**: Servidor HTTP com validação criptográfica HMAC-SHA256 (`X-Hub-Signature-256`), rotas de health-check, endpoints de Embedded Signup e tratamento de ecos.
 - **Adaptadores de Mensageria (`src/adapters/`)**:
-  - `MetaWhatsAppAdapter` (Oficial Meta Cloud API via Graph API).
+  - `MetaWhatsAppAdapter` (Oficial Meta Cloud API via Graph API v21.0 com suporte a ecos).
   - `EvolutionApiAdapter` (Opcional - instâncias Baileys auto-hospedadas).
   - `ZApiAdapter` (Opcional - gateway em nuvem).
-- **Provedor de IA Contextual (`src/services/ai-service.js`)**: Integração opcional com Groq (Llama 3.3 70B), OpenAI ou OpenRouter, com fallback automático para regras locais caso a IA esteja offline.
-- **Atendimento Humano (`src/services/human-handoff.js`)**: Transbordo suave e envio de alerta instantâneo via WhatsApp para o telefone do administrador.
+- **Provedor de IA Contextual (`src/services/ai-service.js`)**: Integração com Groq (Llama 3.3 70B), OpenAI ou OpenRouter com fallback determinístico local.
+- **Atendimento Humano (`src/services/human-handoff.js`)**: Disparo de alerta instantâneo via WhatsApp para o telefone do administrador.
 - **Persistência (`Supabase`)**: Tabelas `box74_products`, `box74_orders`, `box74_conversations` e `box74_messages` com proteção por RLS e stored procedures.
 
 ---
 
-## 2. Passo a Passo: Configuração da Meta WhatsApp Cloud API (Oficial)
-
-A Meta WhatsApp Cloud API é o canal oficial e mais estável para empresas.
+## 2. Configuração no Meta for Developers e Meta Business
 
 ### Etapa 2.1 — Criar Aplicativo no Meta for Developers
-1. Acesse o portal [developers.facebook.com](https://developers.facebook.com/) e faça login com sua conta do Facebook.
+1. Acesse o portal [developers.facebook.com](https://developers.facebook.com/) e faça login com a conta do Facebook da empresa.
 2. Clique em **Meus Aplicativos** > **Criar Aplicativo**.
 3. Selecione o tipo **Empresa (Business)** e avance.
-4. Dê o nome ao app (ex: `BOX74 Atendimento WhatsApp`) e vincule à sua Conta Empresarial do Gerenciador de Negócios da Meta (Meta Business Manager).
-5. No painel do aplicativo criado, localize o produto **WhatsApp** e clique em **Configurar**.
+4. Dê o nome ao app (ex: `BOX74 Atendimento WhatsApp`) e vincule à Conta Empresarial da BOX74 no Meta Business Manager.
+5. No painel do aplicativo, adicione os produtos:
+   - **WhatsApp** (clique em Configurar).
+   - **Facebook Login for Business** (necessário para o Embedded Signup).
 
-### Etapa 2.2 — Obter os Identificadores e Chaves
-1. No menu lateral do app, vá em **WhatsApp** > **Primeiros Passos** (ou **Configuração da API**):
-   - **ID do Número de Telefone (Phone Number ID)**: copie o código numérico (ex: `105948392019482`). Este valor irá para `META_WA_PHONE_NUMBER_ID`.
-2. Vá em **Configurações do Aplicativo** > **Básico**:
-   - **Chave Secreta do Aplicativo (App Secret)**: clique em "Mostrar" e copie. Este valor irá para `META_WA_APP_SECRET`. Ele é utilizado para autenticar que as requisições recebidas no Webhook vêm genuinamente dos servidores da Meta.
+### Etapa 2.2 — Configurar o WhatsApp Embedded Signup
+1. No menu do app, acesse **Facebook Login for Business** > **Configurações**:
+   - Ative o fluxo de login via navegador / JavaScript SDK.
+   - Adicione a URL do catálogo BOX74 nos domínios permitidos para redirecionamento OAuth.
+2. Em **WhatsApp** > **Embedded Signup**:
+   - Crie um **Configuration ID** (Identificador de Configuração).
+   - Defina as permissões solicitadas: `whatsapp_business_management` e `whatsapp_business_messaging`.
+   - Copie o **Configuration ID** gerado. Este valor irá para `META_EMBEDDED_CONFIG_ID`.
 
-### Etapa 2.3 — Gerar Token de Acesso Permanente (System User Token)
-> *Nota: O token gerado na tela "Primeiros Passos" é temporário (expira em 24h). Para produção, crie um usuário do sistema permanente:*
-1. Acesse o [Gerenciador de Negócios da Meta (business.facebook.com)](https://business.facebook.com/settings).
-2. Vá em **Usuários** > **Usuários do Sistema** > **Adicionar**.
-3. Nome: `Bot-BOX74` | Função: `Administrador`.
-4. Clique em **Adicionar Ativos** e selecione sua conta do WhatsApp com permissão total.
-5. Clique em **Gerar Novo Token**, selecione o app `BOX74`, defina a validade como **Nunca expirar** e marque as permissões:
-   - `whatsapp_business_messaging`
-   - `whatsapp_business_management`
-6. Copie o token gerado. Este valor irá para `META_WA_TOKEN`.
+### Etapa 2.3 — Obter as Chaves do Aplicativo
+1. Vá em **Configurações do Aplicativo** > **Básico**:
+   - **ID do Aplicativo (App ID)**: copie o código numérico. Este valor irá para `META_APP_ID`.
+   - **Chave Secreta do Aplicativo (App Secret)**: clique em "Mostrar" e copie. Este valor irá para `META_WA_APP_SECRET`. Ele é utilizado para autenticar a assinatura HMAC-SHA256 (`X-Hub-Signature-256`) em todas as mensagens recebidas.
+
+### Etapa 2.4 — Modo de Coexistência com WhatsApp Business App
+> **Importante:** A Meta introduziu o suporte oficial à coexistência entre o aplicativo WhatsApp Business no smartphone (Android/iOS) e a Cloud API para o mesmo número comercial:
+- O número `+55 84 98189-6369` **NÃO precisa ser desconectado do celular** nem migrado de forma destrutiva.
+- Ao realizar o onboarding via Embedded Signup com a opção de coexistência ativa, a Meta sincroniza as mensagens entre a Cloud API e o aplicativo móvel.
+- Para habilitar os avisos de quando alguém responde pelo celular, é obrigatório marcar o campo de webhook `message_echoes`.
+
+---
+
+## 3. Configuração dos Webhooks na Meta
+
+1. No painel do app na Meta, vá em **WhatsApp** > **Configuração** > seção **Webhook**:
+   - **URL de Retorno de Chamada**: `https://seu-dominio.com/webhook` (deve ser HTTPS com certificado válido).
+   - **Verificar Token**: digite o valor definido em `META_WA_VERIFY_TOKEN` (ex: `box74_webhook_token_seguro`).
+2. Clique em **Verificar e Salvar** (o servidor BOX74 responderá com o `hub.challenge`).
+3. Clique em **Gerenciar Campos** e assine obrigatoriamente:
+   - **`messages`**: para receber as mensagens enviadas pelos clientes.
+   - **`message_echoes`**: para detectar quando a atendente responde pelo celular e silenciar o bot.
 
 ---
 
@@ -197,15 +217,18 @@ sudo certbot --nginx -d api-whatsapp.box74.com.br
 
 ---
 
-## 8. Dados Externos que Devem ser Fornecidos pelo Proprietário da BOX74
+## 8. Dados Externos que Devem ser Fornecidos ou Configurados pelo Proprietário da BOX74
 
-Para concluir a ativação no número comercial da BOX74, o proprietário deve fornecer ou configurar no arquivo `.env`:
+Para concluir a ativação no número comercial da BOX74, o proprietário deve fornecer ou configurar no arquivo `.env` (ou autorizar através do Embedded Signup):
 
 | Dado Necessário | Onde Obter | Variável no `.env` |
 |---|---|---|
-| **Número WhatsApp Comercial** | Chip/eSIM dedicado para a BOX74 | Cadastrado no Gerenciador da Meta |
+| **Número WhatsApp Comercial** | Linha telefônica oficial da loja | `+55 84 98189-6369` (5584981896369) |
+| **Meta App ID** | Meta Developers > Painel do Aplicativo | `META_APP_ID` |
+| **Meta App Secret** | Meta Developers > Configurações > Básico | `META_WA_APP_SECRET` |
+| **Embedded Signup Config ID** | Meta Developers > WhatsApp > Embedded Signup | `META_EMBEDDED_CONFIG_ID` |
 | **Meta Access Token Permanente** | Meta Business Manager > Usuários do Sistema | `META_WA_TOKEN` |
 | **Phone Number ID** | Meta Developers > WhatsApp > Configuração da API | `META_WA_PHONE_NUMBER_ID` |
-| **App Secret** | Meta Developers > Configurações > Básico | `META_WA_APP_SECRET` |
-| **Telefone do Atendente Humano** | Telefone pessoal/comercial do responsável da BOX74 | `NOTIFICATION_ADMIN_PHONE` |
+| **WABA ID (WhatsApp Business Account)** | Meta Developers > WhatsApp > Configuração da API | `META_WA_WABA_ID` |
+| **Telefone do Atendente Humano** | Telefone do responsável para receber alertas de transbordo | `NOTIFICATION_ADMIN_PHONE` |
 | **Chave de IA (Opcional)** | Painel Groq ([console.groq.com](https://console.groq.com)) ou OpenAI | `AI_API_KEY` |

@@ -55,11 +55,23 @@ const config = {
 
   // Provedor de WhatsApp Principal: Meta Cloud API
   meta: {
+    appId: process.env.META_APP_ID || '',
+    appSecret: process.env.META_WA_APP_SECRET || '',
     token: process.env.META_WA_TOKEN || '',
     phoneNumberId: process.env.META_WA_PHONE_NUMBER_ID || '',
-    appSecret: process.env.META_WA_APP_SECRET || '',
+    wabaId: process.env.META_WA_WABA_ID || '',
     verifyToken: process.env.META_WA_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || 'box74_webhook_token_seguro',
-    apiVersion: process.env.META_WA_API_VERSION || 'v21.0'
+    apiVersion: process.env.META_WA_API_VERSION || 'v21.0',
+    configId: process.env.META_EMBEDDED_CONFIG_ID || '',
+    coexistenceEnabled: process.env.META_COEXISTENCE_ENABLED !== 'false'
+  },
+
+  // Número Oficial BOX74
+  officialPhone: {
+    number: '5584981896369',
+    display: '+55 84 98189-6369',
+    countryCode: '55',
+    areaCode: '84'
   },
 
   // Provedor de Mensageria Selecionado ('meta', 'evolution', 'zapi' ou 'mock')

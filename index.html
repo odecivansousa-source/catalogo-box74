@@ -123,7 +123,7 @@
 </head>
 <body>
   <header class="top">
-    <div class="wrap nav"><a class="brand" href="#inicio" aria-label="BOX74, início"><span class="mark">74</span><span>BOX74</span></a><a class="nav-note" href="https://wa.me/5584999415379" target="_blank" rel="noopener">WHATSAPP · (84) 99941-5379</a></div>
+    <div class="wrap nav"><a class="brand" href="#inicio" aria-label="BOX74, início"><span class="mark">74</span><span>BOX74</span></a><a class="nav-note" href="https://wa.me/5584981896369" target="_blank" rel="noopener">WHATSAPP · (84) 98189-6369</a></div>
     <div class="wrap hero" id="inicio">
       <div><div class="eyebrow">Cuidado que faz diferença</div><h1>Limpeza para facilitar o seu dia.</h1><p>Encontre os produtos de limpeza da BOX74 em um só lugar.</p><a class="button" href="#catalogo">Ver catálogo <span aria-hidden="true">&nbsp;↓</span></a></div>
       <div class="hero-art"><img class="hero-logo" src="logo-box74.png" alt="BOX74 Materiais de Limpeza — qualidade para um dia a dia mais limpo"></div>
@@ -143,6 +143,7 @@
           <button class="admin-tab" id="tab-stock-btn" type="button">Controle de Estoque <span class="badge" id="stock-alert-badge" style="background:#5a1c1c;color:#f87171;display:none">0</span></button>
           <button class="admin-tab" id="tab-finance-btn" type="button">Painel Financeiro</button>
           <button class="admin-tab" id="tab-products-btn" type="button">Catálogo de Produtos</button>
+          <button class="admin-tab" id="tab-whatsapp-btn" type="button">WhatsApp Oficial <span class="badge" style="background:#134e4a;color:#2dd4bf">Meta</span></button>
         </div>
         <button class="admin-action" id="sign-out" type="button">Sair da área da loja</button>
       </div>
@@ -475,6 +476,61 @@
         <p class="admin-status" id="admin-status" role="status" aria-live="polite"></p>
         <div class="admin-list" id="admin-list"></div>
       </div>
+
+      <!-- SEÇÃO DE INTEGRAÇÃO OFICIAL WHATSAPP (META EMBEDDED SIGNUP & COEXISTÊNCIA) -->
+      <div id="admin-whatsapp-section" class="hidden">
+        <div style="background:var(--surface-elevated);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px">
+            <div>
+              <span class="eyebrow" style="color:var(--gold)">WHATSAPP BUSINESS PLATFORM · META CLOUD API</span>
+              <h3 style="margin:4px 0 0;font-size:18px;color:#f0f4f1">Integração Oficial BOX74 & Coexistência</h3>
+            </div>
+            <span class="badge" style="background:#064e3b;color:#34d399;font-size:13px;padding:6px 12px;border-radius:20px">Pronto para Conexão</span>
+          </div>
+          <p class="admin-help" style="margin-bottom:16px">
+            Conecte o agente de atendimento da BOX74 à API oficial da Meta utilizando o fluxo <b>Embedded Signup</b>.
+            O número autorizado opera em modo de <b>Coexistência</b>: você continua utilizando o aplicativo WhatsApp Business no seu celular normalmente, enquanto a IA atende em paralelo e pausa automaticamente sempre que você responder a um cliente pelo celular.
+          </p>
+
+          <div class="metrics-grid" style="margin-bottom:18px">
+            <div class="metric-card highlight">
+              <span class="metric-label">Número Oficial Autorizado</span>
+              <b class="metric-val gold" style="font-size:18px">+55 84 98189-6369</b>
+              <span style="font-size:11px;color:var(--muted);margin-top:4px">Exclusivo para a BOX74</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Modo de Coexistência</span>
+              <b class="metric-val" style="color:#34d399;font-size:16px">Habilitado (SMB App + Cloud API)</b>
+              <span style="font-size:11px;color:var(--muted);margin-top:4px">App móvel preservado</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Status da Conexão</span>
+              <b class="metric-val" id="wa-connection-status" style="color:#fbbf24;font-size:16px">Aguardando Autorização Meta</b>
+              <span style="font-size:11px;color:var(--muted);margin-top:4px">Embedded Signup</span>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:18px">
+            <h4 style="margin:0 0 8px;font-size:15px;color:#f0f4f1">✦ O que é o fluxo Meta Embedded Signup?</h4>
+            <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 12px">
+              É a experiência oficial da Meta que permite à proprietária da conta do Facebook Business autorizar o WhatsApp da BOX74 em poucos cliques, sem necessidade de copiar e colar chaves secretas manualmente. O backend recebe o código de autorização e obtém as permissões seguras.
+            </p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+              <button class="admin-action" id="btn-launch-embedded-signup" type="button" style="background:#189c49;color:#fff;font-weight:700">
+                Iniciar Conexão Meta (Embedded Signup)
+              </button>
+              <button class="admin-action" id="btn-check-wa-status" type="button">
+                Verificar Status da Conexão
+              </button>
+            </div>
+            <p id="wa-status-feedback" style="margin:10px 0 0;font-size:12px;color:var(--muted)"></p>
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px">
+            <b>Regras de Segurança Aplicadas:</b> O sistema rejeita automaticamente qualquer número que não seja <b>+55 84 98189-6369</b>. Nenhuma mensagem externa é disparada sem autorização expressa da administração.
+          </div>
+        </div>
+      </div>
     </section>
     <div class="section-head"><div><div class="eyebrow">BOX74 · CATÁLOGO</div><h2>Encontre o que precisa</h2></div><p id="result-count">11 produtos</p></div>
     <p class="image-note" id="image-note">Imagens ilustrativas. Consulte a loja para confirmar a embalagem disponível.</p>
@@ -483,7 +539,7 @@
     <section id="empty" class="empty"><div class="empty-icon">✦</div><h3>Estamos preparando o catálogo</h3><p>Em breve, você encontra aqui os produtos, preços e detalhes da BOX74. Consulte a loja para confirmar a disponibilidade.</p><span class="hint">Produtos e preços serão adicionados pela BOX74</span></section>
     <div class="benefits"><div class="benefit"><b>Para casa e negócio</b><span>Soluções para diferentes rotinas de limpeza.</span></div><div class="benefit"><b>Catálogo sempre à mão</b><span>Acesse pelo celular e encontre seus produtos.</span></div><div class="benefit"><b>BOX74</b><span>Seu catálogo digital de produtos de limpeza.</span></div></div>
     <section class="contact-panel" id="contato" aria-label="Contato e pagamento">
-      <article class="contact-card"><h2>Faça seu pedido</h2><p>Consulte disponibilidade e fale com a BOX74 pelo WhatsApp.</p><a class="whatsapp-button" href="https://wa.me/5584999415379?text=Ol%C3%A1%2C%20vim%20pelo%20cat%C3%A1logo%20digital%20da%20BOX74." target="_blank" rel="noopener">Conversar no WhatsApp</a></article>
+      <article class="contact-card"><h2>Faça seu pedido</h2><p>Consulte disponibilidade e fale com a BOX74 pelo WhatsApp.</p><a class="whatsapp-button" href="https://wa.me/5584981896369?text=Ol%C3%A1%2C%20vim%20pelo%20cat%C3%A1logo%20digital%20da%20BOX74." target="_blank" rel="noopener">Conversar no WhatsApp</a></article>
       <article class="contact-card"><h2>Pagamento via Pix</h2><span class="pix-label">Chave Pix</span><strong class="pix-key" id="pix-key">5fbf536f-8dea-4ff2-9546-7f4e0e487e3d</strong><span class="pix-owner">Adriana Maria de Lima Almeida</span><br><button class="copy-button" id="copy-pix" type="button">Copiar chave Pix</button><span id="copy-status" role="status" aria-live="polite" style="display:block;margin-top:8px;font-size:12px;color:var(--muted)"></span></article>
     </section>
   </main>
@@ -737,52 +793,36 @@
           tabStockBtn=document.querySelector('#tab-stock-btn'),
           tabFinanceBtn=document.querySelector('#tab-finance-btn'),
           tabProductsBtn=document.querySelector('#tab-products-btn'),
+          tabWhatsappBtn=document.querySelector('#tab-whatsapp-btn'),
           ordersSection=document.querySelector('#admin-orders-section'),
           stockSection=document.querySelector('#admin-stock-section'),
           financeSection=document.querySelector('#admin-finance-section'),
-          productsSection=document.querySelector('#admin-products-section');
+          productsSection=document.querySelector('#admin-products-section'),
+          whatsappSection=document.querySelector('#admin-whatsapp-section');
+
+    function setActiveTab(activeBtn, activeSec) {
+      [tabOrdersBtn, tabStockBtn, tabFinanceBtn, tabProductsBtn, tabWhatsappBtn].forEach(b => b?.classList.remove('active'));
+      [ordersSection, stockSection, financeSection, productsSection, whatsappSection].forEach(s => s?.classList.add('hidden'));
+      activeBtn?.classList.add('active');
+      activeSec?.classList.remove('hidden');
+    }
 
     tabOrdersBtn?.addEventListener('click',()=>{
-      tabOrdersBtn.classList.add('active');
-      tabStockBtn?.classList.remove('active');
-      tabFinanceBtn?.classList.remove('active');
-      tabProductsBtn.classList.remove('active');
-      ordersSection?.classList.remove('hidden');
-      stockSection?.classList.add('hidden');
-      financeSection?.classList.add('hidden');
-      productsSection?.classList.add('hidden');
+      setActiveTab(tabOrdersBtn, ordersSection);
     });
     tabStockBtn?.addEventListener('click',()=>{
-      tabStockBtn.classList.add('active');
-      tabOrdersBtn?.classList.remove('active');
-      tabFinanceBtn?.classList.remove('active');
-      tabProductsBtn.classList.remove('active');
-      stockSection?.classList.remove('hidden');
-      ordersSection?.classList.add('hidden');
-      financeSection?.classList.add('hidden');
-      productsSection?.classList.add('hidden');
+      setActiveTab(tabStockBtn, stockSection);
       renderStock();
     });
     tabFinanceBtn?.addEventListener('click',()=>{
-      tabFinanceBtn.classList.add('active');
-      tabOrdersBtn?.classList.remove('active');
-      tabStockBtn?.classList.remove('active');
-      tabProductsBtn.classList.remove('active');
-      financeSection?.classList.remove('hidden');
-      ordersSection?.classList.add('hidden');
-      stockSection?.classList.add('hidden');
-      productsSection?.classList.add('hidden');
+      setActiveTab(tabFinanceBtn, financeSection);
       renderFinance();
     });
     tabProductsBtn?.addEventListener('click',()=>{
-      tabProductsBtn.classList.add('active');
-      tabOrdersBtn?.classList.remove('active');
-      tabStockBtn?.classList.remove('active');
-      tabFinanceBtn?.classList.remove('active');
-      productsSection?.classList.remove('hidden');
-      ordersSection?.classList.add('hidden');
-      stockSection?.classList.add('hidden');
-      financeSection?.classList.add('hidden');
+      setActiveTab(tabProductsBtn, productsSection);
+    });
+    tabWhatsappBtn?.addEventListener('click',()=>{
+      setActiveTab(tabWhatsappBtn, whatsappSection);
     });
 
     let stockMovements=[];
@@ -1647,7 +1687,7 @@
 
       const itensStr=orderItems.map(it=>`• ${it.quantidade} × ${it.nome}${it.tamanho?' ('+it.tamanho+')':''} — ${moeda.format(it.subtotal)}`).join('\n');
       const mensagem=`Olá! Quero fazer este pedido na BOX74 (Cód. ${orderId}):\n\n${itensStr}\n\nSubtotal: ${moeda.format(total)}\nRecebimento: ${recebimento}${recebimento.startsWith('Entrega')?'\nEndereço: '+endereco:''}\n\nCliente: ${nome}\nWhatsApp: ${telefone}\n\nVou pagar o subtotal via Pix e enviar o comprovante por aqui.`;
-      const url=`https://wa.me/5584999415379?text=${encodeURIComponent(mensagem)}`;
+      const url=`https://wa.me/5584981896369?text=${encodeURIComponent(mensagem)}`;
       window.open(url,'_blank','noopener,noreferrer');
       document.querySelector('#open-whatsapp-order').href=url;
       carrinho={};
