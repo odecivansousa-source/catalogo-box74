@@ -5,6 +5,7 @@ const path = require('path');
 const tests = [
   { name: 'Segurança e Autenticação', file: 'test-security.js' },
   { name: 'Ciclo de Vida de Imagens e Erros Storage', file: 'test-images-lifecycle.js' },
+  { name: 'Módulo de Histórico e Gestão de Pedidos', file: 'test-orders-module.js' },
   { name: 'Integração Real Supabase', file: 'test-integration.js' }
 ];
 

@@ -37,8 +37,8 @@ function request(url, options = {}) {
 async function run() {
   console.log('=== TESTES DE INTEGRACAO REAL SUPABASE BOX74 ===\n');
 
-  // 1. Verificar contagem dos 33 produtos oficiais
   try {
+    // 1. Verificar contagem dos 33 produtos oficiais
     const res = await request(`${SUPABASE_URL}/rest/v1/box74_products?select=*`, {
       method: 'GET',
       headers: {
@@ -60,7 +60,7 @@ async function run() {
       const p = comFoto[0];
       const imageUrl = p.foto || `${SUPABASE_URL}/storage/v1/object/public/box74-products/${p.image_path}`;
       const imgRes = await request(imageUrl, { method: 'HEAD' });
-      assert(imgRes.statusCode === 200, `Imagem publica acessivel no Storage HTTP 200: ${p.nome}`);
+      assert(imgRes.statusCode === 200, `Imagem publica acessivel no Storage HTTP 200`);
     }
 
     // 3. Teste de seguranca: tentativa anonima de upload bloqueada por RLS
@@ -90,6 +90,19 @@ async function run() {
     // 5. Garantir integridade dos 33 produtos (nenhum produto de teste persistido no banco)
     const testProducts = produtos.filter(p => p.nome && p.nome.toLowerCase().includes('teste'));
     assert(testProducts.length === 0, `Nenhum produto de teste poluiu a base oficial (33 produtos limpos)`);
+
+    // 6. Validar existencia e protecao RLS da tabela box74_orders
+    const ordersRes = await request(`${SUPABASE_URL}/rest/v1/box74_orders?select=*`, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    assert(ordersRes.statusCode === 200, `API REST box74_orders respondeu HTTP 200`);
+    const ordersData = JSON.parse(ordersRes.data);
+    assert(Array.isArray(ordersData), 'Resposta de box74_orders e uma lista');
+    assert(ordersData.length === 0, 'RLS protege os pedidos: nenhum dado de cliente visivel para usuarios anonimos');
 
   } catch (err) {
     console.error('Erro de integracao:', err);
