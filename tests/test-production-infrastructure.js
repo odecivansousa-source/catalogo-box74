@@ -94,6 +94,13 @@ async function runTests() {
     assert.strictEqual(result.valid, false);
   });
 
+  it('Sem App Secret configurado em produção, rejeita a verificação com erro de segurança', () => {
+    const adapterNoSecret = new MetaWhatsAppAdapter({ appSecret: '', isProduction: true });
+    const result = adapterNoSecret.verifySignature(rawPayload, 'sha256=123');
+    assert.strictEqual(result.valid, false);
+    assert.ok(result.error.includes('META_WA_APP_SECRET é obrigatório em produção'));
+  });
+
   // -------------------------------------------------------------
   // 3. ADAPTADORES DE MENSAGERIA (META, EVOLUTION, Z-API)
   // -------------------------------------------------------------

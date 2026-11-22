@@ -6,6 +6,7 @@
 
 const assert = require('assert');
 const http = require('http');
+const crypto = require('crypto');
 
 const { config } = require('../src/config');
 const { MetaEmbeddedSignupService } = require('../src/services/meta-embedded-signup');
@@ -118,7 +119,26 @@ async function runTests() {
     }
   };
 
-  const store = new CredentialsStore();
+  // Mock Supabase para testes sem depender de rede/chaves externas
+  const inMemoryDb = new Map();
+  const mockSupabase = {
+    from: () => ({
+      upsert: async (record) => {
+        inMemoryDb.set(record.id, { ...record, updated_at: new Date().toISOString() });
+        return { data: [inMemoryDb.get(record.id)], error: null };
+      },
+      select: () => ({
+        eq: (col, val) => ({
+          single: async () => {
+            const row = inMemoryDb.get(val);
+            return { data: row || null, error: row ? null : { message: 'Not found' } };
+          }
+        })
+      })
+    })
+  };
+
+  const store = new CredentialsStore({ supabaseClient: mockSupabase });
   const signupService = new MetaEmbeddedSignupService({
     appId: '1234567890',
     appSecret: 'segredo_app_meta',
@@ -143,7 +163,7 @@ async function runTests() {
     const res = await signupService.validatePhoneNumber('phone_123_oficial', 'token_dummy');
     assert.strictEqual(res.valid, true);
     assert.strictEqual(res.displayPhoneNumber, '+55 84 98189-6369');
-    assert.strictEqual(res.coexistenceEligible, true);
+    assert.strictEqual(res.coexistenceConfirmed, true);
   });
 
   await itAsync('Bloqueia estritamente tentativa de conectar número divergente', async () => {
@@ -152,7 +172,26 @@ async function runTests() {
     assert.ok(res.error.includes('diverge do número oficial autorizado'));
   });
 
-  await itAsync('Executa pipeline completo do Embedded Signup e persiste credenciais', async () => {
+  await itAsync('CredentialsStore rejeita e lança erro caso a persistência falhe', async () => {
+    const failingStore = new CredentialsStore({
+      supabaseClient: {
+        from: () => ({
+          upsert: () => Promise.resolve({ data: null, error: { message: 'Erro de permissão no Supabase' } })
+        })
+      }
+    });
+
+    let threw = false;
+    try {
+      await failingStore.saveCredentials({ wabaId: 'w1', phoneNumberId: 'p1' });
+    } catch (e) {
+      threw = true;
+      assert.ok(e.message.includes('Falha ao persistir credenciais Meta no Supabase'));
+    }
+    assert.strictEqual(threw, true, 'Deve lançar erro e não declarar sucesso falso');
+  });
+
+  await itAsync('Executa pipeline completo do Embedded Signup e persiste credenciais protegidas', async () => {
     const result = await signupService.processEmbeddedSignup({
       code: 'code_valido_meta',
       wabaId: 'waba_box74_123',
@@ -161,13 +200,15 @@ async function runTests() {
 
     assert.strictEqual(result.success, true);
     assert.strictEqual(result.officialPhone, OFFICIAL_DISPLAY);
-    assert.strictEqual(result.coexistenceActive, true);
+    assert.strictEqual(result.status, 'autorizado');
+    assert.strictEqual(result.coexistenceStatus, 'ativo');
 
-    // Verifica persistência no CredentialsStore
+    // Verifica persistência protegida no CredentialsStore (com token armazenado)
     const saved = await store.getCredentials();
     assert.strictEqual(saved.phone_number, OFFICIAL_PHONE);
     assert.strictEqual(saved.phone_number_id, 'phone_123_oficial');
     assert.strictEqual(saved.waba_id, 'waba_box74_123');
+    assert.strictEqual(saved.access_token, 'EAAB_token_sistema_meta_permanente');
   });
 
   // -------------------------------------------------------------
@@ -223,7 +264,16 @@ async function runTests() {
     assert.strictEqual(res.action, 'bot_silenced');
     assert.strictEqual(mockConversation.state, 'transf_humano');
     assert.strictEqual(silencedPhone, '5585991112222');
-    assert.strictEqual(coexistence.isCustomerUnderHumanWindow('5585991112222'), true);
+    const isSilencedInitial = await coexistence.isCustomerUnderHumanWindow('5585991112222', mockAgent);
+    assert.strictEqual(isSilencedInitial, true);
+
+    // Simulação de reinício do servidor (Map em memória limpo)
+    coexistence.recentHumanInterventions.clear();
+    assert.strictEqual(coexistence.recentHumanInterventions.size, 0);
+
+    // Consulta durável deve manter a IA pausada recuperando o estado persistido no banco
+    const isSilencedAfterRestart = await coexistence.isCustomerUnderHumanWindow('5585991112222', mockAgent);
+    assert.strictEqual(isSilencedAfterRestart, true, 'Estado de silenciamento deve ser preservado após reinício');
   });
 
   // -------------------------------------------------------------
@@ -234,20 +284,24 @@ async function runTests() {
   const server = createWebhookServer(agent, {
     credentialsStore: store,
     coexistenceService: coexistence,
-    mockEmbeddedTransport: mockTransport
+    mockEmbeddedTransport: mockTransport,
+    meta: {
+      appSecret: 'segredo_app_meta',
+      verifyToken: 'meu_token_box74_verificacao'
+    }
   });
 
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const serverPort = server.address().port;
 
-  function doReq(path, method = 'GET', body = null) {
+  function doReq(path, method = 'GET', body = null, extraHeaders = {}) {
     return new Promise((resolve, reject) => {
       const req = http.request({
         hostname: '127.0.0.1',
         port: serverPort,
         path,
         method,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...extraHeaders }
       }, (res) => {
         let data = '';
         res.on('data', c => data += c);
@@ -270,10 +324,10 @@ async function runTests() {
     assert.strictEqual(res.data.coexistenceSupported, true);
   });
 
-  await itAsync('GET /api/meta/coexistence/status retorna status de prontidão da coexistência', async () => {
+  await itAsync('GET /api/meta/coexistence/status retorna status da coexistência', async () => {
     const res = await doReq('/api/meta/coexistence/status');
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(res.data.status, 'coexistence_ready');
+    assert.strictEqual(res.data.status, 'ativo');
     assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
   });
 
@@ -282,7 +336,8 @@ async function runTests() {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
     assert.strictEqual(res.data.configured, true);
-    assert.strictEqual(res.data.token, undefined, 'Tokens secretos NUNCA devem ser expostos na API');
+    assert.strictEqual(res.data.status, 'autorizado');
+    assert.strictEqual(res.data.access_token, undefined, 'Tokens secretos NUNCA devem ser expostos na API');
   });
 
   await itAsync('POST /api/meta/embedded-signup rejeita requisição sem código ou phoneId', async () => {
@@ -322,7 +377,11 @@ async function runTests() {
       }]
     };
 
-    const res = await doReq('/webhook', 'POST', echoPayload);
+    const bodyStr = JSON.stringify(echoPayload);
+    const sig = crypto.createHmac('sha256', 'segredo_app_meta').update(bodyStr).digest('hex');
+    const res = await doReq('/webhook', 'POST', bodyStr, {
+      'X-Hub-Signature-256': `sha256=${sig}`
+    });
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.data.coexistence, true);
     assert.strictEqual(res.data.result.action, 'bot_silenced');

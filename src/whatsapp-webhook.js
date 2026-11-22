@@ -89,13 +89,14 @@ function createWebhookServer(agent = new WhatsAppAgent(), options = {}) {
 
     // 3. Status da Coexistência com WhatsApp Business App
     if (url.pathname === '/api/meta/coexistence/status' && req.method === 'GET') {
+      const creds = await credentialsStore.getCredentials();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         officialPhoneNumber: currentConfig.officialPhone?.display,
         officialPhoneNumberRaw: currentConfig.officialPhone?.number,
         coexistenceEnabled: coexistenceService.enabled,
         recentHumanInterventionsCount: coexistenceService.recentHumanInterventions.size,
-        status: 'coexistence_ready'
+        status: creds.coexistence_status || 'preparado'
       }));
       return;
     }
@@ -191,13 +192,29 @@ function createWebhookServer(agent = new WhatsAppAgent(), options = {}) {
         const bodyStr = rawBody.toString('utf8');
 
         // Validação criptográfica de assinatura se for provedor Meta
-        if (currentConfig.waProvider === 'meta' && currentConfig.meta.appSecret && typeof adapter.verifySignature === 'function') {
+        if (currentConfig.waProvider === 'meta') {
+          const isProd = currentConfig.env === 'production';
           const sigHeader = req.headers['x-hub-signature-256'];
-          const verification = adapter.verifySignature(bodyStr, sigHeader);
-          if (!verification.valid) {
-            console.warn('[BOX74 Webhook] Assinatura X-Hub-Signature-256 rejeitada:', verification.error);
+
+          // Em produção, a ausência de appSecret é estritamente rejeitada por segurança
+          if (isProd && !currentConfig.meta.appSecret) {
+            console.error('[BOX74 Webhook] ERRO CRÍTICO: META_WA_APP_SECRET não configurado em produção. Requisição rejeitada.');
             res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Assinatura inválida', detail: verification.error }));
+            res.end(JSON.stringify({ error: 'Configuração insegura: META_WA_APP_SECRET é obrigatório em produção.' }));
+            return;
+          }
+
+          if (currentConfig.meta.appSecret && typeof adapter.verifySignature === 'function') {
+            const verification = adapter.verifySignature(bodyStr, sigHeader, isProd);
+            if (!verification.valid) {
+              console.warn('[BOX74 Webhook] Assinatura X-Hub-Signature-256 rejeitada:', verification.error);
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Assinatura inválida', detail: verification.error }));
+              return;
+            }
+          } else if (isProd) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Assinatura HMAC-SHA256 ausente em ambiente de produção.' }));
             return;
           }
         }

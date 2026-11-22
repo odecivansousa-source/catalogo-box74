@@ -11,7 +11,7 @@ class MetaEmbeddedSignupService {
   constructor(options = {}) {
     this.appId = options.appId || config.meta.appId;
     this.appSecret = options.appSecret || config.meta.appSecret;
-    this.apiVersion = options.apiVersion || config.meta.apiVersion || 'v21.0';
+    this.apiVersion = options.apiVersion || config.meta.apiVersion || 'v22.0';
     this.officialNumber = (options.officialNumber || config.officialPhone.number).replace(/\D/g, '');
     this.credentialsStore = options.credentialsStore || null;
     this.mockTransport = options.mockTransport || null; // Para testes unitários
@@ -119,14 +119,17 @@ class MetaEmbeddedSignupService {
       };
     }
 
+    const isCoexistenceConfirmed = res.data.platform_type === 'CLOUD_API_COEXISTENCE';
+
     return {
       valid: true,
       phoneNumberId: res.data.id,
       displayPhoneNumber: res.data.display_phone_number,
       verifiedName: res.data.verified_name,
       qualityRating: res.data.quality_rating,
-      platformType: res.data.platform_type || 'CLOUD_API',
-      coexistenceEligible: true
+      platformType: res.data.platform_type || 'UNKNOWN',
+      coexistenceConfirmed: isCoexistenceConfirmed,
+      coexistenceStatus: isCoexistenceConfirmed ? 'ativo' : 'autorizado'
     };
   }
 
@@ -175,19 +178,22 @@ class MetaEmbeddedSignupService {
       console.warn('[BOX74 EmbeddedSignup] Aviso na subscrição de webhooks:', subResult.error);
     }
 
-    // 4. Persistência segura das credenciais
+    // 4. Persistência segura das credenciais com o token no backend
     if (this.credentialsStore) {
       await this.credentialsStore.saveCredentials({
         wabaId,
         phoneNumberId,
         phoneNumber: this.officialNumber,
-        status: 'coexistence_ready',
+        accessToken, // Armazenado no backend de forma restrita
+        status: 'autorizado',
+        coexistenceStatus: phoneValidation.coexistenceStatus,
         coexistenceEnabled: true,
         metadata: {
           verifiedName: phoneValidation.verifiedName,
           qualityRating: phoneValidation.qualityRating,
+          platformType: phoneValidation.platformType,
           subscribedWebhooks: subResult.success,
-          connectedAt: new Date().toISOString()
+          authorizedAt: new Date().toISOString()
         }
       });
     }
@@ -198,8 +204,10 @@ class MetaEmbeddedSignupService {
       wabaId,
       phoneNumberId,
       verifiedName: phoneValidation.verifiedName,
-      coexistenceActive: true,
-      message: 'Integração oficial Meta WhatsApp Cloud API configurada com sucesso em modo de coexistência.'
+      status: 'autorizado',
+      coexistenceStatus: phoneValidation.coexistenceStatus,
+      coexistenceActive: Boolean(phoneValidation.coexistenceConfirmed),
+      message: 'Autorização Meta concluída com sucesso. Credenciais armazenadas com segurança.'
     };
   }
 }

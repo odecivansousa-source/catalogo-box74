@@ -1,6 +1,7 @@
 // =====================================================================
 // BOX74 - Armazenamento Seguro de Credenciais Meta WhatsApp
-// Persistência de WABA ID, Phone Number ID e estado de Coexistência
+// Persistência com credenciais de servidor (serviceRoleKey),
+// validação rigorosa de erros e separação de estados (preparado/autorizado/ativo)
 // =====================================================================
 
 const https = require('https');
@@ -9,7 +10,8 @@ const { config } = require('../config');
 class CredentialsStore {
   constructor(options = {}) {
     this.supabaseUrl = options.supabaseUrl || config.supabase.url;
-    this.supabaseKey = options.supabaseKey || config.supabase.anonKey;
+    // Utiliza preferencialmente a serviceRoleKey para persistência protegida no backend
+    this.supabaseKey = options.supabaseKey || config.supabase.serviceRoleKey || config.supabase.anonKey;
     this.customClient = options.supabaseClient || null;
     this.inMemoryStore = new Map();
   }
@@ -42,49 +44,60 @@ class CredentialsStore {
     });
   }
 
-  // Salva ou atualiza as credenciais da Meta com segurança
-  async saveCredentials({ wabaId, phoneNumberId, phoneNumber, status, coexistenceEnabled, metadata = {} }) {
+  // Salva ou atualiza as credenciais da Meta com validação de erro estrita
+  async saveCredentials({ accessToken, wabaId, phoneNumberId, phoneNumber, status, coexistenceStatus, coexistenceEnabled, metadata = {} }) {
+    const existing = this.inMemoryStore.get('active_whatsapp_integration') || {};
+
     const record = {
       id: 'active_whatsapp_integration',
       phone_number: (phoneNumber || config.officialPhone.number).replace(/\D/g, ''),
       phone_number_display: config.officialPhone.display,
-      phone_number_id: phoneNumberId || '',
-      waba_id: wabaId || '',
-      status: status || 'configured', // 'pending_verification', 'configured', 'coexistence_active'
+      phone_number_id: phoneNumberId || existing.phone_number_id || '',
+      waba_id: wabaId || existing.waba_id || '',
+      access_token: accessToken || existing.access_token || '', // Armazenamento seguro de servidor
+      status: status || 'autorizado', // 'preparado', 'autorizado', 'ativo'
+      coexistence_status: coexistenceStatus || (status === 'ativo' ? 'ativo' : 'preparado'),
       coexistence_enabled: coexistenceEnabled !== undefined ? coexistenceEnabled : true,
       updated_at: new Date().toISOString(),
       metadata: metadata || {}
     };
 
-    // Sempre mantém em memória como cache imediato
-    this.inMemoryStore.set(record.id, record);
-
     if (this.customClient) {
-      try {
-        await this.customClient
-          .from('box74_meta_credentials')
-          .upsert(record, { onConflict: 'id' });
-      } catch (err) {
-        // Fallback in-memory
+      const { data, error } = await this.customClient
+        .from('box74_meta_credentials')
+        .upsert(record, { onConflict: 'id' });
+
+      if (error) {
+        console.error('[BOX74 CredentialsStore] Erro ao salvar no Supabase:', error.message);
+        throw new Error(`Falha ao persistir credenciais Meta no Supabase: ${error.message}`);
       }
+      this.inMemoryStore.set(record.id, record);
       return record;
     }
 
     try {
-      await this._supabaseRequest(
+      const res = await this._supabaseRequest(
         '/rest/v1/box74_meta_credentials',
         'POST',
         record,
         { 'Prefer': 'resolution=merge-duplicates,return=minimal' }
       );
-    } catch (e) {
-      // Fallback em memória já garantido
+
+      if (res && res.statusCode >= 300) {
+        const errorDetail = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
+        console.error(`[BOX74 CredentialsStore] Falha HTTP ${res.statusCode} no Supabase:`, errorDetail);
+        throw new Error(`Falha ao persistir credenciais Meta no Supabase (HTTP ${res.statusCode}): ${errorDetail}`);
+      }
+    } catch (err) {
+      console.error('[BOX74 CredentialsStore] Erro de rede ou autorização:', err.message);
+      throw err;
     }
 
+    this.inMemoryStore.set(record.id, record);
     return record;
   }
 
-  // Obtém as credenciais ativas
+  // Obtém as credenciais ativas completas (para uso interno exclusivo do backend)
   async getCredentials() {
     let creds = null;
 
@@ -119,7 +132,7 @@ class CredentialsStore {
       creds = this.inMemoryStore.get('active_whatsapp_integration');
     }
 
-    // Se ainda não existir no banco, usa as variáveis de ambiente atuais
+    // Se ainda não existir registro no banco, inicializa com o estado 'preparado'
     if (!creds) {
       creds = {
         id: 'active_whatsapp_integration',
@@ -127,7 +140,9 @@ class CredentialsStore {
         phone_number_display: config.officialPhone.display,
         phone_number_id: config.meta.phoneNumberId,
         waba_id: config.meta.wabaId,
-        status: config.meta.token && config.meta.phoneNumberId ? 'configured' : 'pending_configuration',
+        access_token: config.meta.token || '',
+        status: config.meta.token && config.meta.phoneNumberId ? 'autorizado' : 'preparado',
+        coexistence_status: 'preparado',
         coexistence_enabled: config.meta.coexistenceEnabled,
         updated_at: new Date().toISOString()
       };
@@ -136,16 +151,17 @@ class CredentialsStore {
     return creds;
   }
 
-  // Retorna resumo público seguro sem segredos ou tokens
+  // Retorna resumo público seguro (NUNCA expõe access_token ou segredos)
   async getPublicStatus() {
     const creds = await this.getCredentials();
     return {
       officialPhoneNumber: config.officialPhone.display,
       phoneNumberRaw: config.officialPhone.number,
-      configured: Boolean(creds.phone_number_id && creds.waba_id),
+      configured: Boolean(creds.phone_number_id && creds.waba_id && (creds.access_token || config.meta.token)),
       phoneNumberId: creds.phone_number_id || null,
       wabaId: creds.waba_id || null,
-      status: creds.status || 'pending_configuration',
+      status: creds.status || 'preparado', // 'preparado', 'autorizado', 'ativo'
+      coexistenceStatus: creds.coexistence_status || 'preparado', // 'preparado', 'autorizado', 'ativo'
       coexistenceEnabled: Boolean(creds.coexistence_enabled),
       lastUpdated: creds.updated_at || null
     };

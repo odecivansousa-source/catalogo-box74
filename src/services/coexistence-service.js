@@ -53,11 +53,12 @@ class CoexistenceService {
       });
     }
 
-    // 2. Atualiza estado da conversa para transf_humano no agente
+    // 2. Atualiza estado da conversa para transf_humano no agente e persiste no Supabase
     if (agent && typeof agent.getConversation === 'function' && typeof agent.saveConversation === 'function') {
       const conv = await agent.getConversation(customerPhone);
       if (conv) {
         conv.state = 'transf_humano';
+        conv.last_human_intervention_at = new Date().toISOString();
         await agent.saveConversation(conv);
       }
     }
@@ -79,18 +80,36 @@ class CoexistenceService {
     };
   }
 
-  // Verifica se o cliente está sob janela de intervenção humana recente
-  isCustomerUnderHumanWindow(customerPhone) {
+  // Verifica se o cliente está sob janela de intervenção humana (com persistência durável no banco)
+  async isCustomerUnderHumanWindow(customerPhone, agent = null) {
     const cleanPhone = (customerPhone || '').replace(/\D/g, '');
-    if (!this.recentHumanInterventions.has(cleanPhone)) return false;
+    if (!cleanPhone) return false;
 
-    const timestamp = this.recentHumanInterventions.get(cleanPhone);
-    const elapsed = Date.now() - timestamp;
-    if (elapsed > this.silenceWindowMs) {
+    // 1. Verificação rápida em cache de memória
+    if (this.recentHumanInterventions.has(cleanPhone)) {
+      const timestamp = this.recentHumanInterventions.get(cleanPhone);
+      const elapsed = Date.now() - timestamp;
+      if (elapsed <= this.silenceWindowMs) {
+        return true;
+      }
       this.recentHumanInterventions.delete(cleanPhone);
-      return false;
     }
-    return true;
+
+    // 2. Persistência durável no banco de dados (sobrevive ao reinício do servidor)
+    if (agent && typeof agent.getConversation === 'function') {
+      try {
+        const conv = await agent.getConversation(cleanPhone);
+        if (conv && conv.state === 'transf_humano') {
+          // Restaura no cache de memória local
+          this.recentHumanInterventions.set(cleanPhone, Date.now());
+          return true;
+        }
+      } catch (err) {
+        // Fallback silencioso
+      }
+    }
+
+    return false;
   }
 
   // Limpa janela para reativar bot quando cliente enviar "MENU"

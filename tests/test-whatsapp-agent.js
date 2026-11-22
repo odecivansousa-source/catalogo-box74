@@ -2,6 +2,7 @@
 const { WhatsAppAgent } = require('../src/whatsapp-agent');
 const { createWebhookServer, WEBHOOK_VERIFY_TOKEN } = require('../src/whatsapp-webhook');
 const http = require('http');
+const crypto = require('crypto');
 
 let passed = 0;
 let failed = 0;
@@ -201,7 +202,13 @@ async function run() {
   // Teste do Servidor Webhook HTTP
   // -------------------------------------------------------------
   console.log('\n--- TESTE DO WEBHOOK HTTP ---');
-  const server = createWebhookServer(agent);
+  const testSecret = 'segredo_webhook_teste_agent';
+  const server = createWebhookServer(agent, {
+    meta: {
+      verifyToken: WEBHOOK_VERIFY_TOKEN,
+      appSecret: testSecret
+    }
+  });
   await new Promise(resolve => server.listen(0, resolve));
   const port = server.address().port;
 
@@ -224,9 +231,14 @@ async function run() {
       text: 'Olá, qual o valor do sabão clarilux?',
       messageId: msgId('wh1')
     });
+    const sig = crypto.createHmac('sha256', testSecret).update(postData).digest('hex');
     const req = http.request(`http://localhost:${port}/webhook`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(postData),
+        'X-Hub-Signature-256': `sha256=${sig}`
+      }
     }, res => {
       let data = '';
       res.on('data', c => data += c);

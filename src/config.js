@@ -61,7 +61,7 @@ const config = {
     phoneNumberId: process.env.META_WA_PHONE_NUMBER_ID || '',
     wabaId: process.env.META_WA_WABA_ID || '',
     verifyToken: process.env.META_WA_VERIFY_TOKEN || process.env.WHATSAPP_VERIFY_TOKEN || 'box74_webhook_token_seguro',
-    apiVersion: process.env.META_WA_API_VERSION || 'v21.0',
+    apiVersion: process.env.META_WA_API_VERSION || 'v22.0',
     configId: process.env.META_EMBEDDED_CONFIG_ID || '',
     coexistenceEnabled: process.env.META_COEXISTENCE_ENABLED !== 'false'
   },

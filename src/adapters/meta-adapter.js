@@ -12,15 +12,21 @@ class MetaWhatsAppAdapter {
     this.token = options.token || '';
     this.phoneNumberId = options.phoneNumberId || '';
     this.appSecret = options.appSecret || '';
-    this.apiVersion = options.apiVersion || 'v21.0';
-    this.officialNumber = (options.officialNumber || config.officialPhone.number).replace(/\D/g, '');
+    this.apiVersion = options.apiVersion || config.meta?.apiVersion || 'v22.0';
+    this.officialNumber = (options.officialNumber || config.officialPhone?.number || '').replace(/\D/g, '');
+    this.isProduction = options.isProduction !== undefined ? options.isProduction : (config.env === 'production');
     this.mockTransport = options.mockTransport || null; // Para testes unitários
   }
 
   // Validação criptográfica de assinatura X-Hub-Signature-256 enviada pela Meta
-  verifySignature(rawBody, signatureHeader) {
+  verifySignature(rawBody, signatureHeader, isProductionOverride = null) {
+    const isProd = isProductionOverride !== null ? isProductionOverride : this.isProduction;
+
+    // Regra Obrigatória: Em produção, o segredo é mandatório; sem ele, a requisição é rejeitada
     if (!this.appSecret) {
-      // Se não houver segredo configurado (ambiente local/desenvolvimento), aceita com aviso
+      if (isProd) {
+        return { valid: false, error: 'META_WA_APP_SECRET é obrigatório em produção. Assinatura não pode ser validada.' };
+      }
       return { valid: true, warning: 'META_WA_APP_SECRET não configurado' };
     }
 
