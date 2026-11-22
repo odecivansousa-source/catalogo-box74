@@ -105,7 +105,11 @@ class CoexistenceService {
           return true;
         }
       } catch (err) {
-        // Fallback silencioso
+        // Política de falha fechada (fail-closed): se a consulta ao Supabase falhar,
+        // a IA assume atendimento humano para evitar disparos automatizados indevidos,
+        // preservando a integridade do estado persistido sem corrompê-lo.
+        console.warn(`[BOX74 Coexistência] Falha ao consultar Supabase para ${cleanPhone}: ${err.message}. Ativando fail-closed (silenciamento seguro).`);
+        return true;
       }
     }
 

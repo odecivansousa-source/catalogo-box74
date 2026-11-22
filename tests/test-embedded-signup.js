@@ -355,6 +355,17 @@ async function runTests() {
     assert.ok(resMenu.response.includes('Atendimento automático reiniciado'));
   });
 
+  await itAsync('CoexistenceService adota fail-closed se consulta ao Supabase falhar', async () => {
+    coexistence.recentHumanInterventions.clear();
+    const failingAgent = {
+      getConversation: async () => {
+        throw new Error('Falha de conexão com banco de dados');
+      }
+    };
+    const isSilenced = await coexistence.isCustomerUnderHumanWindow('5585993334444', failingAgent);
+    assert.strictEqual(isSilenced, true, 'Deve retornar true (fail-closed) para não responder automaticamente');
+  });
+
   // -------------------------------------------------------------
   // 4. ENDPOINTS HTTP DO SERVIDOR WEBHOOK
   // -------------------------------------------------------------
@@ -401,6 +412,7 @@ async function runTests() {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.data.officialPhoneNumber, OFFICIAL_DISPLAY);
     assert.strictEqual(res.data.coexistenceSupported, true);
+    assert.strictEqual(res.data.apiVersion, 'v22.0');
   });
 
   await itAsync('GET /api/meta/coexistence/status retorna status da coexistência', async () => {

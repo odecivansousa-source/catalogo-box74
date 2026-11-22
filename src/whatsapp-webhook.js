@@ -113,7 +113,7 @@ function createWebhookServer(agent = new WhatsAppAgent(), options = {}) {
         configId: currentConfig.meta?.configId || '',
         officialPhoneNumber: currentConfig.officialPhone?.display,
         officialPhoneNumberRaw: currentConfig.officialPhone?.number,
-        apiVersion: currentConfig.meta?.apiVersion || 'v21.0',
+        apiVersion: currentConfig.meta?.apiVersion || process.env.META_WA_API_VERSION || 'v22.0',
         coexistenceSupported: true
       }));
       return;
