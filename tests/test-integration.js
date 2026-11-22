@@ -104,6 +104,19 @@ async function run() {
     assert(Array.isArray(ordersData), 'Resposta de box74_orders e uma lista');
     assert(ordersData.length === 0, 'RLS protege os pedidos: nenhum dado de cliente visivel para usuarios anonimos');
 
+    // 7. Validar existencia e protecao RLS da tabela box74_stock_movements
+    const movRes = await request(`${SUPABASE_URL}/rest/v1/box74_stock_movements?select=*`, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    assert(movRes.statusCode === 200, `API REST box74_stock_movements respondeu HTTP 200`);
+    const movData = JSON.parse(movRes.data);
+    assert(Array.isArray(movData), 'Resposta de box74_stock_movements e uma lista');
+    assert(movData.length === 0, 'RLS protege movimentações de estoque contra acessos anonimos');
+
   } catch (err) {
     console.error('Erro de integracao:', err);
     failed++;
