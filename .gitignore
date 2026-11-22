@@ -1,0 +1,20 @@
+# Ambientes e Segredos
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Dependências
+node_modules/
+
+# Logs e PM2
+logs/
+*.log
+npm-debug.log*
+
+# Sistema Operacional e IDEs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

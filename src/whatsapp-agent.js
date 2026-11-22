@@ -5,22 +5,34 @@
 // =====================================================================
 
 const https = require('https');
+const { config: defaultConfig } = require('./config');
+const { AIService } = require('./services/ai-service');
+const { HumanHandoffService } = require('./services/human-handoff');
 
-const DEFAULT_SUPABASE_URL = 'https://owzamemhgbmrqmwlkqcc.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_9Q9g9ziWIZuhq24zRPp11Q_OgIMhkq6';
-const PIX_KEY = '5fbf536f-8dea-4ff2-9546-7f4e0e487e3d';
-const PIX_OWNER = 'Adriana Maria de Lima Almeida';
+const DEFAULT_SUPABASE_URL = defaultConfig?.supabase?.url || 'https://owzamemhgbmrqmwlkqcc.supabase.co';
+const DEFAULT_SUPABASE_KEY = defaultConfig?.supabase?.anonKey || 'sb_publishable_9Q9g9ziWIZuhq24zRPp11Q_OgIMhkq6';
+const PIX_KEY = defaultConfig?.pix?.key || '5fbf536f-8dea-4ff2-9546-7f4e0e487e3d';
+const PIX_OWNER = defaultConfig?.pix?.owner || 'Adriana Maria de Lima Almeida';
 
 class WhatsAppAgent {
   constructor(options = {}) {
-    this.supabaseUrl = options.supabaseUrl || DEFAULT_SUPABASE_URL;
-    this.supabaseKey = options.supabaseKey || DEFAULT_SUPABASE_KEY;
+    this.config = options.config || defaultConfig || {};
+    this.supabaseUrl = options.supabaseUrl || this.config.supabase?.url || DEFAULT_SUPABASE_URL;
+    this.supabaseKey = options.supabaseKey || this.config.supabase?.anonKey || DEFAULT_SUPABASE_KEY;
     this.catalogCache = null;
     this.catalogCacheTime = 0;
     this.cacheTtlMs = options.cacheTtlMs || 60000; // 1 minuto
     this.processedMessageIds = new Set();
     this.inMemoryConversations = new Map();
     this.customClient = options.supabaseClient || null;
+
+    // Serviços auxiliares integrados
+    this.aiService = options.aiService || new AIService(options.ai || this.config.ai);
+    this.humanHandoff = options.humanHandoff || new HumanHandoffService({
+      ...(this.config.humanSupport || {}),
+      ...(options.humanSupport || {}),
+      adapter: options.adapter
+    });
   }
 
   // Normalização de texto para NLU tolerante a erros de digitação e acentos
@@ -382,6 +394,37 @@ class WhatsAppAgent {
     }
   }
 
+  // Grava mensagem enviada pelo bot no histórico de mensagens do Supabase
+  async recordOutgoingMessage(messageId, phone, text) {
+    if (!phone || !text) return;
+    const outId = `out-${messageId || Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    if (this.customClient) {
+      try {
+        await this.customClient.rpc('box74_record_message', {
+          p_id: outId,
+          p_phone: phone,
+          p_direction: 'outbound',
+          p_content: text
+        });
+      } catch (err) {
+        // Fallback silencioso
+      }
+      return;
+    }
+
+    try {
+      await this._supabaseRequest('/rest/v1/rpc/box74_record_message', 'POST', {
+        p_id: outId,
+        p_phone: phone,
+        p_direction: 'outbound',
+        p_content: text
+      });
+    } catch (e) {
+      // Ignora falha de auditoria para não travar a conversa
+    }
+  }
+
   // Formatação de Moeda
   formatCurrency(val) {
     return `R$ ${Number(val).toFixed(2).replace('.', ',')}`;
@@ -434,6 +477,13 @@ class WhatsAppAgent {
     if (/\b(atendente|humano|humana|pessoa real|falar com alguém|falar com alguem|suporte humano|atendimento humano)\b/.test(norm)) {
       conv.state = 'transf_humano';
       await this.saveConversation(conv);
+      if (this.humanHandoff) {
+        await this.humanHandoff.triggerHandoff(from, {
+          customerName: conv.customer_name,
+          lastMessage: text,
+          cartSummary: this._formatCartMessage(conv)
+        });
+      }
       return {
         response: 'Encaminhei sua conversa para a equipe da BOX74. Um responsável humano continuará o atendimento por aqui em instantes!\n\nCaso queira voltar para o atendimento automático, basta digitar *MENU*.',
         state: 'transf_humano'
@@ -441,10 +491,13 @@ class WhatsAppAgent {
     }
 
     // Se estiver em atendimento humano e o cliente não digitar "menu", a IA silencia
-    if (conv.state === 'transf_humano') {
+    if (conv.state === 'transf_humano' || (this.humanHandoff && this.humanHandoff.isSilenced(from))) {
       if (norm === 'menu' || norm === 'voltar' || norm === 'reiniciar' || norm === 'inicio') {
         conv.state = 'atendimento_ia';
         await this.saveConversation(conv);
+        if (this.humanHandoff) {
+          this.humanHandoff.resumeBot(from);
+        }
         return {
           response: 'Atendimento automático reiniciado! Como posso ajudar você hoje na BOX74?',
           state: 'atendimento_ia'
@@ -722,6 +775,25 @@ class WhatsAppAgent {
           response: `Olá *${conv.customer_name}*! Como prefere receber seu pedido?\n1. *Retirada na loja*\n2. *Entrega* (frete a combinar)`,
           state: 'coletando_recebimento'
         };
+      }
+    }
+
+    // Consulta contextual de IA caso habilitada e configurada
+    if (this.aiService && this.aiService.enabled) {
+      try {
+        const aiResult = await this.aiService.completeChat([
+          { role: 'user', content: text }
+        ], { catalog });
+
+        if (aiResult.success && aiResult.text) {
+          return {
+            response: aiResult.text,
+            state: conv.state,
+            aiGenerated: true
+          };
+        }
+      } catch (err) {
+        // Fallback silencioso para o comportamento determinístico
       }
     }
 

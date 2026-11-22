@@ -1,0 +1,27 @@
+{
+  "name": "catalogo-box74",
+  "version": "1.0.0",
+  "description": "Catálogo de Produtos e Agente Inteligente de Vendas WhatsApp BOX74",
+  "main": "src/whatsapp-webhook.js",
+  "scripts": {
+    "start": "node src/whatsapp-webhook.js",
+    "dev": "node --watch src/whatsapp-webhook.js",
+    "test": "node tests/run-all.js",
+    "test:whatsapp": "node tests/test-whatsapp-agent.js",
+    "test:infra": "node tests/test-production-infrastructure.js",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs box74-whatsapp"
+  },
+  "keywords": [
+    "box74",
+    "whatsapp",
+    "catalogo",
+    "ecommerce",
+    "ai-agent",
+    "supabase"
+  ],
+  "author": "BOX74",
+  "license": "ISC"
+}

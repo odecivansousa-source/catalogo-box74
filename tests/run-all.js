@@ -9,6 +9,7 @@ const tests = [
   { name: 'Controle Inteligente de Estoque', file: 'test-stock-module.js' },
   { name: 'Módulo Financeiro, Custos e Despesas', file: 'test-finance-module.js' },
   { name: 'Cérebro do Agente WhatsApp BOX74', file: 'test-whatsapp-agent.js' },
+  { name: 'Infraestrutura de Produção e Webhooks', file: 'test-production-infrastructure.js' },
   { name: 'Integração Real Supabase', file: 'test-integration.js' }
 ];
 
