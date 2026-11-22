@@ -281,6 +281,104 @@ class WhatsAppAgent {
     return recommendations;
   }
 
+  // Extrai filtro de volume solicitado pelo cliente em linguagem natural
+  extractVolumeFilter(text) {
+    const norm = this.normalizeText(text);
+    const m = norm.match(/\b(\d+)\s*(l|litros?|litrao)\b/) || norm.match(/galao\s*de\s*(\d+)/) || norm.match(/galao\s*(\d+)/);
+    if (m) {
+      return m[1];
+    }
+    if (/\b(cinco\s*litros?|cinco\s*l)\b/.test(norm)) return '5';
+    if (/\b(dois\s*litros?|dois\s*l)\b/.test(norm)) return '2';
+    if (/\b(um\s*litro|um\s*l)\b/.test(norm)) return '1';
+    if (/\b(500\s*ml|meio\s*litro)\b/.test(norm)) return '500';
+    return null;
+  }
+
+  // Verifica se o tamanho do produto corresponde ao volume filtrado
+  matchProductVolume(productSize, volumeFilter) {
+    if (!volumeFilter) return true;
+    if (!productSize) return false;
+    const sNorm = this.normalizeText(productSize);
+    const regex = new RegExp('(^|\\s)' + volumeFilter + '(\\s*litros?|\\s*l|\\s*ml|$)', 'i');
+    return regex.test(sNorm);
+  }
+
+  // Identifica intenção de consulta por categoria/tipo de produto
+  findCategoryInquiry(text) {
+    const norm = this.normalizeText(text);
+
+    const categoryDefinitions = [
+      {
+        key: 'sabao liquido',
+        label: 'Sabão Líquido',
+        pattern: /\b(sabao\s+liquido|saboes\s+liquidos)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('sabao liquido') || n.includes('sabao liquido');
+        }
+      },
+      {
+        key: 'amaciante',
+        label: 'Amaciante',
+        pattern: /\b(amaciante|amaciantes)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('amaciante') || n.includes('amaciante');
+        }
+      },
+      {
+        key: 'detergente',
+        label: 'Detergente',
+        pattern: /\b(detergente|detergentes)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('detergente') || n.includes('detergente');
+        }
+      },
+      {
+        key: 'desinfetante',
+        label: 'Desinfetante',
+        pattern: /\b(desinfetante|desinfetantes)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('desinfetante') || n.includes('desinfetante');
+        }
+      },
+      {
+        key: 'agua sanitaria',
+        label: 'Água Sanitária',
+        pattern: /\b(agua\s+sanitaria|aguas\s+sanitarias|cloro)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('agua sanitaria') || n.includes('agua sanitaria') || c.includes('cloro') || n.includes('cloro');
+        }
+      },
+      {
+        key: 'saco de lixo',
+        label: 'Saco de Lixo',
+        pattern: /\b(saco\s+de\s+lixo|sacos\s+de\s+lixo)\b/,
+        match: (p) => {
+          const c = this.normalizeText(p.category || '');
+          const n = this.normalizeText(p.name || '');
+          return c.includes('saco') || n.includes('saco de lixo') || n.includes('sacos de lixo');
+        }
+      }
+    ];
+
+    for (const def of categoryDefinitions) {
+      if (def.pattern.test(norm)) {
+        return def;
+      }
+    }
+    return null;
+  }
+
   // 3. Gestão de Estado e Memória da Conversa (Supabase / In-Memory)
   async getConversation(phone) {
     let conv = null;
@@ -616,8 +714,48 @@ class WhatsAppAgent {
       };
     }
 
+    // Consulta Específica por Categoria ou Tipo de Produto (ex: Sabão líquido 5L)
+    const isRemovalIntent = /\b(tirar|tira|remover|remove|excluir)\b/.test(norm);
+    const categoryInquiry = !isRemovalIntent ? this.findCategoryInquiry(norm) : null;
+    const isQuestionOrInquiry = /\b(quais|quanto|quantos|qual|custa|custam|valor|preco|precos|tipos|opcoes|tem|temos)\b/.test(norm);
+    const isDirectPurchase = (/\b(quero|adiciona|adicionar|bota|coloca|me ve|me manda|leva|levar)\b/.test(norm) && !isQuestionOrInquiry);
+
+    if (categoryInquiry && !isDirectPurchase && !isRemovalIntent) {
+      const volumeFilter = this.extractVolumeFilter(norm);
+      let matchingProducts = catalog.filter(p => categoryInquiry.match(p));
+
+      // Se o cliente especificou volume (ex: galão de 5 litros), filtra estritamente
+      if (volumeFilter) {
+        matchingProducts = matchingProducts.filter(p => this.matchProductVolume(p.size, volumeFilter));
+      }
+
+      if (matchingProducts.length > 0) {
+        const volumeLabel = volumeFilter === '5'
+          ? ' no galão de *5 litros*'
+          : (volumeFilter ? (/^\d+$/.test(volumeFilter) ? ` de *${volumeFilter} litros*` : ` de *${volumeFilter}*`) : '');
+        let resp = `Temos as seguintes opções de *${categoryInquiry.label}*${volumeLabel}:\n\n`;
+
+        for (const p of matchingProducts) {
+          const preco = this.getProductPrice(p);
+          const stockText = p.stock !== null && p.stock !== '' && Number(p.stock) <= 0 ? ' _(Esgotado no momento)_' : '';
+          resp += `• *${p.name}* (${p.size || '5L'}) — ${this.formatCurrency(preco)}${stockText}\n`;
+        }
+
+        resp += '\nQual dessas opções e quantas unidades você gostaria de pedir?';
+        return { response: resp, state: 'atendimento_ia' };
+      } else {
+        const volumeLabel = volumeFilter === '5'
+          ? ' no galão de 5 litros'
+          : (volumeFilter ? (/^\d+$/.test(volumeFilter) ? ` de ${volumeFilter} litros` : ` de ${volumeFilter}`) : '');
+        return {
+          response: `No momento não encontramos opções de *${categoryInquiry.label}*${volumeLabel} em nosso catálogo.\n\nGostaria de ver outras opções de limpeza ou outro tamanho?`,
+          state: 'atendimento_ia'
+        };
+      }
+    }
+
     // Consulta ao Catálogo Geral
-    if (/\b(catalogo|produtos|tabela|o que voces tem|o que tem|quais produtos|quais sao os produtos)\b/.test(norm)) {
+    if (/\b(catalogo|tabela|o que voces tem|o que tem|quais produtos|quais sao os produtos)\b/.test(norm) || (/\b(produtos)\b/.test(norm) && !categoryInquiry)) {
       const promoProducts = catalog.filter(p => Number(p.promo_price) > 0 && Number(p.promo_price) < Number(p.price));
       let msg = '🌟 *Catálogo BOX74 — Destaques e Linhas Principais (Galões 5L)*:\n\n';
       const mainProds = catalog.slice(0, 10);
@@ -692,8 +830,8 @@ class WhatsAppAgent {
 
     // Adicionar Item / Pedido Conversacional
     const matchedProduct = this.findProductInCatalog(catalog, norm);
-    const isAddingIntent = /\b(quero|adiciona|adicionar|bota|coloca|me ve|me manda|comprar|leva|levar|mais|unidade|unidades|galao|galoes)\b/.test(norm) ||
-      (/\d+/.test(norm) && matchedProduct && !/\b(quanto|preco|valor|custa)\b/.test(norm));
+    const isAddingIntent = !isQuestionOrInquiry && (/\b(quero|adiciona|adicionar|bota|coloca|me ve|me manda|comprar|leva|levar|mais|unidade|unidades)\b/.test(norm) ||
+      (/\d+/.test(norm) && matchedProduct && !/\b(quanto|preco|valor|custa)\b/.test(norm)));
 
     if (matchedProduct && isAddingIntent) {
       // Regra 6: Validação de Estoque
