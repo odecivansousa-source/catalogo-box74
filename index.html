@@ -181,7 +181,7 @@
       if(!Array.isArray(dados)||!dados.length)return produtosOriginais;
       return dados.map((p,i)=>{
         const original=produtosOriginais.find(o=>o.id===p.id||o.nome.toLowerCase()===p.nome.toLowerCase());
-        const imagemInvalida=!p.imagem||p.imagem.includes('supabase.co');
+        const imagemInvalida=!p.imagem;
         return{
           id:p.id||(original?original.id:`box74-${i+1}`),
           nome:p.nome,
@@ -192,7 +192,8 @@
           precoPromo:p.precoPromo??null,
           promoLabel:p.promoLabel||'',
           foto:p.foto||original?.foto||[0,0],
-          imagem:imagemInvalida?(original?.imagem||''):p.imagem
+          imagem:imagemInvalida?(original?.imagem||''):p.imagem,
+          imagePath:p.imagePath||''
         };
       });
     }
@@ -232,7 +233,7 @@
     }
     async function uploadProductPhoto(p){if(!p.imagem?.startsWith('data:image/'))return;const previousPath=p.imagePath||'',blob=await(await fetch(p.imagem)).blob(),path=`products/${p.id}-${Date.now()}.jpg`,{error}=await supabaseClient.storage.from('box74-products').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;p.imagePath=path;p.imagem=supabaseClient.storage.from('box74-products').getPublicUrl(path).data.publicUrl;p.previousImagePath=previousPath;}
     async function saveRemoteCatalog(){try{for(const p of produtos)await uploadProductPhoto(p);const rows=produtos.map((p,i)=>({id:p.id,name:p.nome,category:p.categoria||'Outros',size:p.tamanho||null,price:Number(p.preco),stock:p.estoque===''||p.estoque==null?null:Number(p.estoque),promo_price:p.precoPromo===''||p.precoPromo==null?null:Number(p.precoPromo),promo_label:p.promoLabel||'',image_path:p.imagePath||null,is_active:true,sort_order:i}));const {error}=await supabaseClient.from('box74_products').upsert(rows,{onConflict:'id'});if(error)throw error;for(const p of produtos){if(p.previousImagePath&&p.previousImagePath!==p.imagePath)await supabaseClient.storage.from('box74-products').remove([p.previousImagePath]);delete p.previousImagePath;}try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent='Catálogo e fotos sincronizados com o Supabase.';return true;}catch(e){adminStatus.textContent=`Não foi possível sincronizar: ${e.message||'verifique o acesso e tente novamente.'}`;return false;}}
-    async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){console.warn('Supabase offline ou não configurado:',e.message);return false;}}
+    async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){console.warn('Supabase offline ou não configurado:',e.message);return false;}}
     const adminToggleWrap=document.querySelector('#admin-toggle-wrap');
     function showAdminAccess(){adminToggleWrap?.classList.remove('hidden');}
     function hideAdminAccess(){adminToggleWrap?.classList.add('hidden');adminPanel?.classList.add('hidden');document.querySelector('#admin-login-panel')?.classList.add('hidden');localStorage.removeItem('box74_admin_device');}
@@ -250,6 +251,7 @@
           isAdmin=false;
           adminPanel?.classList.add('hidden');
           document.querySelector('#auth-status').textContent='Este e-mail não tem permissão para editar o catálogo.';
+          await loadRemoteCatalog(false);
           return;
         }
         isAdmin=true;
@@ -264,6 +266,7 @@
         isAdmin=false;
         adminPanel?.classList.add('hidden');
         document.querySelector('#auth-status').textContent='Erro ao validar permissões de administrador no Supabase.';
+        await loadRemoteCatalog(false);
       }
     }
     function render(){
@@ -360,7 +363,7 @@
     }
     document.querySelector('#new-product').addEventListener('click',()=>{if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}resetForm();adminForm.classList.remove('hidden');document.querySelector('#product-name').focus();});document.querySelector('#cancel-edit').addEventListener('click',resetForm);
     document.querySelector('#product-photo').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){adminStatus.textContent='Escolha um arquivo de imagem.';return;}try{fotoEmEdicao=await compactImage(file);fotoSelecionada=true;document.querySelector('#photo-help').textContent='Foto reduzida e pronta para salvar.';}catch{adminStatus.textContent='Não foi possível abrir essa imagem. Tente JPG ou PNG.';}});
-    adminForm.addEventListener('submit',async e=>{e.preventDefault();if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}const id=document.querySelector('#product-id').value||`box74-${Date.now()}`,antigo=produtos.find(p=>p.id===id),preco=Number(document.querySelector('#product-price').value),precoPromo=document.querySelector('#product-promo-price').value===''?null:Number(document.querySelector('#product-promo-price').value);if(precoPromo&&precoPromo>=preco){adminStatus.textContent='O preço promocional precisa ser menor que o preço normal.';return;}const novo={id,nome:document.querySelector('#product-name').value.trim(),categoria:document.querySelector('#product-category').value.trim(),tamanho:document.querySelector('#product-size').value.trim(),preco,estoque:document.querySelector('#product-stock').value===''?null:Number(document.querySelector('#product-stock').value),precoPromo,promoLabel:document.querySelector('#product-promo-label').value.trim(),foto:antigo?.foto||[0,2],imagem:fotoSelecionada?fotoEmEdicao:(fotoEmEdicao||antigo?.imagem||'')};const i=produtos.findIndex(p=>p.id===id);if(i<0)produtos.push(novo);else produtos[i]=novo;if(await save()){render();resetForm();}});
+    adminForm.addEventListener('submit',async e=>{e.preventDefault();if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}const id=document.querySelector('#product-id').value||`box74-${Date.now()}`,antigo=produtos.find(p=>p.id===id),preco=Number(document.querySelector('#product-price').value),precoPromo=document.querySelector('#product-promo-price').value===''?null:Number(document.querySelector('#product-promo-price').value);if(precoPromo&&precoPromo>=preco){adminStatus.textContent='O preço promocional precisa ser menor que o preço normal.';return;}const novo={id,nome:document.querySelector('#product-name').value.trim(),categoria:document.querySelector('#product-category').value.trim(),tamanho:document.querySelector('#product-size').value.trim(),preco,estoque:document.querySelector('#product-stock').value===''?null:Number(document.querySelector('#product-stock').value),precoPromo,promoLabel:document.querySelector('#product-promo-label').value.trim(),foto:antigo?.foto||[0,2],imagem:fotoSelecionada?fotoEmEdicao:(fotoEmEdicao||antigo?.imagem||''),imagePath:antigo?.imagePath||null};const i=produtos.findIndex(p=>p.id===id);if(i<0)produtos.push(novo);else produtos[i]=novo;if(await save()){render();resetForm();}});
     adminList.addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}editProduct(edit.dataset.edit);}if(del){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';alert('Ação bloqueada: é necessário estar autenticado como administrador no Supabase para excluir produtos.');return;}if(confirm('Excluir este produto do catálogo?')){const idDel=del.dataset.delete;const p=produtos.find(x=>x.id===idDel);const {error}=await supabaseClient.from('box74_products').delete().eq('id',idDel);if(error){adminStatus.textContent=`Não foi possível excluir: ${error.message}`;return;}if(p?.imagePath)await supabaseClient.storage.from('box74-products').remove([p.imagePath]);produtos=produtos.filter(x=>x.id!==idDel);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent='Produto excluído com sucesso do catálogo remoto.';render();resetForm();}}});
     document.querySelector('#export-data').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({version:1,products:produtos},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-catalogo-box74.json';a.click();URL.revokeObjectURL(a.href);});
     document.querySelector('#import-trigger').addEventListener('click',()=>{if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}document.querySelector('#import-data').click();});
