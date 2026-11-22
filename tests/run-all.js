@@ -7,6 +7,8 @@ const tests = [
   { name: 'Ciclo de Vida de Imagens e Erros Storage', file: 'test-images-lifecycle.js' },
   { name: 'Módulo de Histórico e Gestão de Pedidos', file: 'test-orders-module.js' },
   { name: 'Controle Inteligente de Estoque', file: 'test-stock-module.js' },
+  { name: 'Módulo Financeiro, Custos e Despesas', file: 'test-finance-module.js' },
+  { name: 'Cérebro do Agente WhatsApp BOX74', file: 'test-whatsapp-agent.js' },
   { name: 'Integração Real Supabase', file: 'test-integration.js' }
 ];
 

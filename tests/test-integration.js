@@ -117,6 +117,22 @@ async function run() {
     assert(Array.isArray(movData), 'Resposta de box74_stock_movements e uma lista');
     assert(movData.length === 0, 'RLS protege movimentações de estoque contra acessos anonimos');
 
+    // 8. Validar coluna cost_price na tabela box74_products
+    assert(produtos.every(p => 'cost_price' in p), 'Todos os 33 produtos possuem o campo cost_price retornado pela API');
+
+    // 9. Validar existencia e protecao RLS da tabela box74_expenses
+    const expRes = await request(`${SUPABASE_URL}/rest/v1/box74_expenses?select=*`, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    assert(expRes.statusCode === 200, `API REST box74_expenses respondeu HTTP 200`);
+    const expData = JSON.parse(expRes.data);
+    assert(Array.isArray(expData), 'Resposta de box74_expenses e uma lista');
+    assert(expData.length === 0, 'RLS protege as despesas operacionais: nenhum registro visivel para anonimos');
+
   } catch (err) {
     console.error('Erro de integracao:', err);
     failed++;

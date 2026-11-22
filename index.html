@@ -68,6 +68,13 @@
     .mov-cancelamento{background:#3f1414;color:#f87171;border:1px solid #7f1d1d}
     .top-selling-row{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
     .top-rank{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-elevated);color:var(--lime);font-weight:850;font-size:13px;border:1px solid #5a471c}
+    .expense-badge{display:inline-flex;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800;text-transform:uppercase}
+    .expense-badge-frete{background:#14283d;color:#60a5fa;border:1px solid #1e40af}
+    .expense-badge-embalagens{background:#382d13;color:#f5c455;border:1px solid #5a471c}
+    .expense-badge-taxas{background:#3f1414;color:#f87171;border:1px solid #7f1d1d}
+    .expense-badge-marketing{background:#2b1740;color:#c084fc;border:1px solid #6b21a8}
+    .expense-badge-operacional{background:#162e24;color:#34d399;border:1px solid #065f46}
+    .expense-badge-outras{background:var(--surface);color:var(--muted);border:1px solid var(--line)}
     footer{background:#080b0a;border-top:1px solid #1a221d;color:#fff;padding:26px 0}.foot{display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:13px;color:#c2c7c0}.foot b{color:#fff;letter-spacing:.5px}
     .hidden{display:none!important}
     @media(max-width:850px){.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -134,6 +141,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="admin-tab active" id="tab-orders-btn" type="button">Gestão de Pedidos <span class="badge" id="orders-count-badge">0</span></button>
           <button class="admin-tab" id="tab-stock-btn" type="button">Controle de Estoque <span class="badge" id="stock-alert-badge" style="background:#5a1c1c;color:#f87171;display:none">0</span></button>
+          <button class="admin-tab" id="tab-finance-btn" type="button">Painel Financeiro</button>
           <button class="admin-tab" id="tab-products-btn" type="button">Catálogo de Produtos</button>
         </div>
         <button class="admin-action" id="sign-out" type="button">Sair da área da loja</button>
@@ -296,6 +304,156 @@
         </div>
       </div>
 
+      <!-- SEÇÃO DO PAINEL FINANCEIRO -->
+      <div id="admin-finance-section" class="hidden">
+        <!-- Toolbar de Período e Exportação -->
+        <div class="orders-toolbar" style="margin-bottom:18px">
+          <div class="orders-filters">
+            <label class="filter-field">
+              <span>Período Financeiro:</span>
+              <select id="finance-period">
+                <option value="todos">Todo o histórico</option>
+                <option value="hoje">Hoje</option>
+                <option value="7dias">Últimos 7 dias (Semana)</option>
+                <option value="mes">Este mês</option>
+              </select>
+            </label>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="admin-action" id="refresh-finance" type="button">↻ Atualizar dados</button>
+            <button class="admin-action" id="export-finance-csv" type="button" style="background:#1e3a2f;color:#34d399;border-color:#065f46">📥 Exportar Relatório CSV</button>
+          </div>
+        </div>
+
+        <!-- Indicadores / KPI Cards Financeiros -->
+        <div class="metrics-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+          <div class="metric-card">
+            <span class="metric-label">Faturamento Bruto</span>
+            <b class="metric-val gold" id="fin-metric-revenue">R$ 0,00</b>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Custo Mercadorias (CMV)</span>
+            <b class="metric-val" id="fin-metric-cmv" style="color:#f87171">R$ 0,00</b>
+          </div>
+          <div class="metric-card highlight">
+            <span class="metric-label">Lucro Bruto (Margem)</span>
+            <b class="metric-val" id="fin-metric-gross-profit" style="color:#34d399">R$ 0,00</b>
+            <span id="fin-metric-gross-margin" style="font-size:12px;color:var(--muted);font-weight:700">0,0% margem</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Despesas Operacionais</span>
+            <b class="metric-val" id="fin-metric-expenses" style="color:#f87171">R$ 0,00</b>
+          </div>
+          <div class="metric-card highlight" id="fin-card-net" style="border-color:#2a5038">
+            <span class="metric-label">Resultado Líquido</span>
+            <b class="metric-val" id="fin-metric-net-result" style="color:#34d399">R$ 0,00</b>
+            <span id="fin-metric-net-margin" style="font-size:12px;color:var(--muted);font-weight:700">0,0% líquido</span>
+          </div>
+        </div>
+
+        <!-- FORMULÁRIO DE REGISTRO DE DESPESAS OPERACIONAIS -->
+        <div style="background:var(--surface-elevated);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:20px">
+          <h4 style="margin:0 0 12px;font-size:16px;color:#f0f4f1">Registrar Despesa Operacional</h4>
+          <form class="admin-form" id="expense-form">
+            <label>Categoria da Despesa
+              <select id="expense-category" required>
+                <option value="Frete">Frete e Entregas</option>
+                <option value="Embalagens">Embalagens e Sacolas</option>
+                <option value="Taxas">Taxas bancárias / Impostos</option>
+                <option value="Marketing">Marketing / Divulgação</option>
+                <option value="Operacional">Custos Operacionais</option>
+                <option value="Outras">Outras Despesas</option>
+              </select>
+            </label>
+            <label>Descrição
+              <input id="expense-description" required maxlength="120" placeholder="Ex.: Combustível entrega zona norte, 100 sacolas">
+            </label>
+            <label>Valor (R$)
+              <input id="expense-amount" type="number" required min="0.01" step="0.01" placeholder="Ex.: 35.00">
+            </label>
+            <label>Data da Despesa
+              <input id="expense-date" type="date" required>
+            </label>
+            <label class="wide">Observações (opcional)
+              <input id="expense-notes" maxlength="200" placeholder="Ex.: Recibo nº 1234, pagamento via Pix">
+            </label>
+            <div class="admin-buttons wide">
+              <button class="admin-action admin-save" type="submit">Salvar Despesa</button>
+            </div>
+          </form>
+          <p class="admin-status" id="expense-status" role="status" aria-live="polite"></p>
+        </div>
+
+        <!-- RANKING DE PRODUTOS MAIS LUCRATIVOS -->
+        <div style="background:var(--surface-elevated);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <h4 style="margin:0;font-size:16px;color:#f0f4f1">💎 Ranking dos Produtos Mais Lucrativos</h4>
+            <span style="font-size:12px;color:var(--muted)">Baseado nas vendas do período selecionado</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="stock-table" id="top-lucrative-table">
+              <thead>
+                <tr>
+                  <th>Posição</th>
+                  <th>Produto</th>
+                  <th>Qtd Vendida</th>
+                  <th>Faturamento</th>
+                  <th>CMV Total</th>
+                  <th>Lucro Bruto Total</th>
+                  <th>Margem %</th>
+                </tr>
+              </thead>
+              <tbody id="top-lucrative-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TABELA DE MARGENS DO CATÁLOGO DE PRODUTOS -->
+        <div style="background:var(--surface-elevated);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:20px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+            <h4 style="margin:0;font-size:16px;color:#f0f4f1">Margem Unitária por Produto do Catálogo</h4>
+            <input type="search" id="search-margins-table" placeholder="Filtrar produtos…" class="search-field" style="min-width:200px" aria-label="Filtrar margens">
+          </div>
+          <div style="overflow-x:auto">
+            <table class="stock-table" id="product-margins-table">
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Preço de Venda</th>
+                  <th>Preço de Custo</th>
+                  <th>Lucro Unitário</th>
+                  <th>Margem Bruta</th>
+                </tr>
+              </thead>
+              <tbody id="product-margins-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TABELA DE DESPESAS OPERACIONAIS -->
+        <div style="background:var(--surface-elevated);border:1px solid var(--line);border-radius:14px;padding:18px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+            <h4 style="margin:0;font-size:16px;color:#f0f4f1">Histórico de Despesas Operacionais</h4>
+            <span id="expenses-count-text" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="stock-table" id="expenses-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Categoria</th>
+                  <th>Descrição</th>
+                  <th>Valor</th>
+                  <th>Observações</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="expenses-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <!-- SEÇÃO DE EDIÇÃO DE PRODUTOS -->
       <div id="admin-products-section" class="hidden">
         <h3>Editar produtos</h3>
@@ -307,6 +465,7 @@
           <label>Categoria<input id="product-category" required maxlength="50"></label>
           <label>Tamanho ou volume<input id="product-size" maxlength="40" placeholder="Ex.: 5 litros"></label>
           <label>Preço (R$)<input id="product-price" type="number" required min="0" step="0.01"></label>
+          <label>Preço de custo / aquisição (R$)<input id="product-cost" type="number" min="0" step="0.01" placeholder="Ex.: 8.50"></label>
           <label>Estoque (unidades)<input id="product-stock" type="number" min="0" step="1" placeholder="Deixe vazio se não controlar"></label>
           <label>Preço promocional (R$)<input id="product-promo-price" type="number" min="0" step="0.01" placeholder="Opcional"></label>
           <label>Nome da promoção<input id="product-promo-label" maxlength="40" placeholder="Ex.: Oferta da semana"></label>
@@ -363,7 +522,7 @@
       {nome:'Sabão Líquido',categoria:'Sabão líquido',tamanho:'2 litros',preco:8,foto:[3,1]},
       {nome:'Detergente',categoria:'Detergente',tamanho:'2 litros',preco:5,foto:[0,2]},
       {nome:'Sabonete Líquido',categoria:'Sabonete líquido',tamanho:'2 litros',preco:15,foto:[2,2]}
-    ].map((p,i)=>({id:`box74-${i+1}`,estoque:null,precoPromo:null,promoLabel:'',imagem:'',foto:[0,0],...p}));
+    ].map((p,i)=>({id:`box74-${i+1}`,custo:0,estoque:null,precoPromo:null,promoLabel:'',imagem:'',foto:[0,0],...p}));
     const STORAGE_KEY='box74-catalogo-v2';
     function normalizarProdutos(dados){
       if(!Array.isArray(dados)||!dados.length)return produtosOriginais;
@@ -376,6 +535,7 @@
           categoria:p.categoria||original?.categoria||'Outros',
           tamanho:p.tamanho??original?.tamanho??'',
           preco:Number(p.preco)||original?.preco||0,
+          custo:p.custo!=null?Number(p.custo):(original?.custo!=null?Number(original.custo):0),
           estoque:p.estoque??null,
           precoPromo:p.precoPromo??null,
           promoLabel:p.promoLabel||'',
@@ -411,6 +571,7 @@
         categoria:r.category,
         tamanho:r.size||'',
         preco:Number(r.price),
+        custo:Number(r.cost_price)||0,
         estoque:r.stock,
         precoPromo:r.promo_price==null?null:Number(r.promo_price),
         promoLabel:r.promo_label||'',
@@ -420,7 +581,7 @@
       };
     }
     async function uploadProductPhoto(p){if(!p.imagem?.startsWith('data:image/'))return;const previousPath=p.imagePath||'',blob=await(await fetch(p.imagem)).blob(),path=`products/${p.id}-${Date.now()}.jpg`,{error}=await supabaseClient.storage.from('box74-products').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw new Error(`Falha no upload da foto: ${error.message||error}`);p.imagePath=path;p.imagem=supabaseClient.storage.from('box74-products').getPublicUrl(path).data.publicUrl;p.previousImagePath=previousPath;}
-    async function saveRemoteCatalog(){try{for(const p of produtos)await uploadProductPhoto(p);const rows=produtos.map((p,i)=>({id:p.id,name:p.nome,category:p.categoria||'Outros',size:p.tamanho||null,price:Number(p.preco),stock:p.estoque===''||p.estoque==null?null:Number(p.estoque),promo_price:p.precoPromo===''||p.precoPromo==null?null:Number(p.precoPromo),promo_label:p.promoLabel||'',image_path:p.imagePath||null,is_active:true,sort_order:i}));const {error}=await supabaseClient.from('box74_products').upsert(rows,{onConflict:'id'});if(error)throw error;let falhaRemocao=false;for(const p of produtos){if(p.previousImagePath&&p.previousImagePath!==p.imagePath){const {error:removeErr}=await supabaseClient.storage.from('box74-products').remove([p.previousImagePath]);if(removeErr){falhaRemocao=true;console.warn(`Aviso: falha ao remover imagem anterior (${p.previousImagePath}):`,removeErr.message||removeErr);}}delete p.previousImagePath;}try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent=falhaRemocao?'Catálogo sincronizado, mas a imagem anterior não pôde ser removida do Storage.':'Catálogo e fotos sincronizados com o Supabase.';return true;}catch(e){adminStatus.textContent=`Não foi possível sincronizar: ${e.message||'verifique o acesso e tente novamente.'}`;return false;}}
+    async function saveRemoteCatalog(){try{for(const p of produtos)await uploadProductPhoto(p);const rows=produtos.map((p,i)=>({id:p.id,name:p.nome,category:p.categoria||'Outros',size:p.tamanho||null,price:Number(p.preco),cost_price:Number(p.custo)||0,stock:p.estoque===''||p.estoque==null?null:Number(p.estoque),promo_price:p.precoPromo===''||p.precoPromo==null?null:Number(p.precoPromo),promo_label:p.promoLabel||'',image_path:p.imagePath||null,is_active:true,sort_order:i}));const {error}=await supabaseClient.from('box74_products').upsert(rows,{onConflict:'id'});if(error)throw error;let falhaRemocao=false;for(const p of produtos){if(p.previousImagePath&&p.previousImagePath!==p.imagePath){const {error:removeErr}=await supabaseClient.storage.from('box74-products').remove([p.previousImagePath]);if(removeErr){falhaRemocao=true;console.warn(`Aviso: falha ao remover imagem anterior (${p.previousImagePath}):`,removeErr.message||removeErr);}}delete p.previousImagePath;}try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent=falhaRemocao?'Catálogo sincronizado, mas a imagem anterior não pôde ser removida do Storage.':'Catálogo e fotos sincronizados com o Supabase.';return true;}catch(e){adminStatus.textContent=`Não foi possível sincronizar: ${e.message||'verifique o acesso e tente novamente.'}`;return false;}}
     async function loadRemoteCatalog(migrateLocal=false){if(!supabaseClient)return false;try{const {data,error}=await supabaseClient.from('box74_products').select('*').order('sort_order');if(error)throw error;if(data?.length){produtos=data.map(mapRemoteProduct);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}render();return true;}if(migrateLocal&&isAdmin&&produtos.length){const ok=await saveRemoteCatalog();if(ok)render();return ok;}return false;}catch(e){console.warn('Supabase offline ou não configurado:',e.message);return false;}}
     const adminToggleWrap=document.querySelector('#admin-toggle-wrap');
     function showAdminAccess(){adminToggleWrap?.classList.remove('hidden');}
@@ -451,7 +612,9 @@
         await loadRemoteCatalog(true);
         await loadRemoteOrders();
         await loadStockMovements();
+        await loadExpenses();
         renderStock();
+        renderFinance();
       }catch(err){
         console.warn(err);
         isAdmin=false;
@@ -469,14 +632,14 @@
       document.querySelector('#result-count').textContent=`${lista.length} ${lista.length===1?'produto':'produtos'}`;grid.className='product-grid';
       grid.innerHTML=lista.map(p=>{const promo=Number(p.precoPromo)>0&&Number(p.precoPromo)<Number(p.preco);const estoqueNum=p.estoque===''||p.estoque==null?null:Number(p.estoque);const esgotado=estoqueNum!==null&&estoqueNum<=0;const estoqueBaixo=estoqueNum!==null&&estoqueNum>0&&estoqueNum<=5;const estoqueText=estoqueNum===null?'Estoque não informado':esgotado?'Esgotado':`${esc(p.estoque)} em estoque`;const alertBadge=esgotado?'<span class="badge-out-of-stock">ESGOTADO</span>':estoqueBaixo?`<span class="badge-low-stock">Últimas ${esc(p.estoque)} unidades!</span>`:'';const imagem=p.imagem?`background-image:url('${p.imagem}');background-size:contain;background-position:center;background-repeat:no-repeat`:`background-position:${(p.foto?.[0]||0)*100/3}% ${(p.foto?.[1]||0)*50}%`;return `<article class="product-card ${esgotado?'out-of-stock':''}"><div class="product-image" role="img" aria-label="${p.imagem?'Foto':'Imagem ilustrativa'} de ${esc(p.nome)}" style="${imagem}"></div><span class="hint">${esc(p.categoria||'BOX74')}</span><h3>${esc(p.nome)}</h3>${p.tamanho?`<span class="product-size">${esc(p.tamanho)}</span>`:''}${promo?`<span class="promo-tag">${esc(p.promoLabel||'Oferta')}</span>`:''}${alertBadge}<strong class="product-price">${moeda.format(promo?Number(p.precoPromo):Number(p.preco))}${promo?`<del class="old-price">${moeda.format(Number(p.preco))}</del>`:''}</strong><span class="stock-note">${estoqueText}</span><button class="add-to-cart" type="button" data-add="${esc(p.id)}" ${esgotado?'disabled':''}>${esgotado?'Esgotado':'Adicionar ao carrinho'}</button></article>`;}).join('');renderAdminList();renderCart();if(isAdmin)renderStock();
     }
-    function renderAdminList(){adminList.innerHTML=produtos.map(p=>`<div class="admin-row"><img src="${p.imagem||'produtos-box74.png'}" alt=""><div class="admin-row-main"><b>${esc(p.nome)}</b><span>${moeda.format(Number(p.preco)||0)} · Estoque: ${p.estoque===''||p.estoque==null?'não informado':esc(p.estoque)}</span></div><div class="admin-row-actions"><button type="button" data-edit="${esc(p.id)}">Editar</button><button type="button" data-delete="${esc(p.id)}">Excluir</button></div></div>`).join('');}
+    function renderAdminList(){adminList.innerHTML=produtos.map(p=>`<div class="admin-row"><img src="${p.imagem||'produtos-box74.png'}" alt=""><div class="admin-row-main"><b>${esc(p.nome)}</b><span>${moeda.format(Number(p.preco)||0)} · Custo: ${moeda.format(Number(p.custo)||0)} · Estoque: ${p.estoque===''||p.estoque==null?'não informado':esc(p.estoque)}</span></div><div class="admin-row-actions"><button type="button" data-edit="${esc(p.id)}">Editar</button><button type="button" data-delete="${esc(p.id)}">Excluir</button></div></div>`).join('');}
     function precoAtual(p){return Number(p.precoPromo)>0&&Number(p.precoPromo)<Number(p.preco)?Number(p.precoPromo):Number(p.preco);}
     function itensCarrinho(){return Object.entries(carrinho).map(([id,quantidade])=>({produto:produtos.find(p=>p.id===id),quantidade:Number(quantidade)})).filter(x=>x.produto&&x.quantidade>0);}
     function totalCarrinho(){return itensCarrinho().reduce((s,x)=>s+precoAtual(x.produto)*x.quantidade,0);}
     function salvarCarrinho(){try{localStorage.setItem('box74-carrinho-v1',JSON.stringify(carrinho));}catch{}}
     function renderCart(){const linhas=itensCarrinho(),qtd=linhas.reduce((s,x)=>s+x.quantidade,0),total=totalCarrinho();document.querySelector('#cart-bar').classList.toggle('hidden',qtd===0);document.querySelector('#cart-count').textContent=`Ver carrinho · ${qtd} ${qtd===1?'item':'itens'}`;document.querySelector('#cart-total').textContent=moeda.format(total);document.querySelector('#checkout-total').textContent=moeda.format(total);document.querySelector('#cart-lines').innerHTML=linhas.length?linhas.map(({produto:p,quantidade})=>`<div class="cart-line"><div><span class="cart-line-name">${esc(p.nome)}</span><span class="cart-line-sub">${esc(p.tamanho||'')} · ${moeda.format(precoAtual(p))} cada</span></div><div class="qty-controls"><button type="button" data-minus="${esc(p.id)}" aria-label="Diminuir quantidade">−</button><b>${quantidade}</b><button type="button" data-plus="${esc(p.id)}" aria-label="Aumentar quantidade">+</button></div><b class="cart-line-total">${moeda.format(precoAtual(p)*quantidade)}</b></div>`).join(''):'<p>Seu carrinho está vazio.</p>';}
-    function resetForm(){adminForm.reset();document.querySelector('#product-id').value='';adminForm.classList.add('hidden');fotoEmEdicao='';fotoSelecionada=false;document.querySelector('#photo-help').textContent='Escolha uma imagem do aparelho. A foto será reduzida para caber no catálogo.';}
-    function editProduct(id){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}const p=produtos.find(x=>x.id===id);if(!p)return;document.querySelector('#product-id').value=p.id;document.querySelector('#product-name').value=p.nome;document.querySelector('#product-category').value=p.categoria;document.querySelector('#product-size').value=p.tamanho||'';document.querySelector('#product-price').value=p.preco;document.querySelector('#product-stock').value=p.estoque??'';document.querySelector('#product-promo-price').value=p.precoPromo??'';document.querySelector('#product-promo-label').value=p.promoLabel||'';fotoEmEdicao=p.imagem||'';fotoSelecionada=false;document.querySelector('#photo-help').textContent=fotoEmEdicao?'Foto atual mantida. Escolha outra para trocar.':'Escolha uma imagem do aparelho.';adminForm.classList.remove('hidden');adminForm.scrollIntoView({behavior:'smooth',block:'start'});}
+    function resetForm(){adminForm.reset();document.querySelector('#product-id').value='';document.querySelector('#product-cost').value='';adminForm.classList.add('hidden');fotoEmEdicao='';fotoSelecionada=false;document.querySelector('#photo-help').textContent='Escolha uma imagem do aparelho. A foto será reduzida para caber no catálogo.';}
+    function editProduct(id){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}const p=produtos.find(x=>x.id===id);if(!p)return;document.querySelector('#product-id').value=p.id;document.querySelector('#product-name').value=p.nome;document.querySelector('#product-category').value=p.categoria;document.querySelector('#product-size').value=p.tamanho||'';document.querySelector('#product-price').value=p.preco;document.querySelector('#product-cost').value=p.custo??'';document.querySelector('#product-stock').value=p.estoque??'';document.querySelector('#product-promo-price').value=p.precoPromo??'';document.querySelector('#product-promo-label').value=p.promoLabel||'';fotoEmEdicao=p.imagem||'';fotoSelecionada=false;document.querySelector('#photo-help').textContent=fotoEmEdicao?'Foto atual mantida. Escolha outra para trocar.':'Escolha uma imagem do aparelho.';adminForm.classList.remove('hidden');adminForm.scrollIntoView({behavior:'smooth',block:'start'});}
     document.querySelector('#edit-toggle').addEventListener('click',()=>{if(isAdmin){document.querySelector('#admin-login-panel').classList.add('hidden');adminPanel.classList.toggle('hidden');if(!adminPanel.classList.contains('hidden'))adminPanel.scrollIntoView({behavior:'smooth',block:'start'});}else{document.querySelector('#admin-login-panel').classList.toggle('hidden');if(!document.querySelector('#admin-login-panel').classList.contains('hidden'))document.querySelector('#admin-login-panel').scrollIntoView({behavior:'smooth',block:'start'});}});
     document.querySelector('#admin-login-form').addEventListener('submit',async e=>{
       e.preventDefault();
@@ -554,7 +717,7 @@
     }
     document.querySelector('#new-product').addEventListener('click',()=>{if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}resetForm();adminForm.classList.remove('hidden');document.querySelector('#product-name').focus();});document.querySelector('#cancel-edit').addEventListener('click',resetForm);
     document.querySelector('#product-photo').addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){adminStatus.textContent='Escolha um arquivo de imagem.';return;}try{fotoEmEdicao=await compactImage(file);fotoSelecionada=true;document.querySelector('#photo-help').textContent='Foto reduzida e pronta para salvar.';}catch{adminStatus.textContent='Não foi possível abrir essa imagem. Tente JPG ou PNG.';}});
-    adminForm.addEventListener('submit',async e=>{e.preventDefault();if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}const id=document.querySelector('#product-id').value||`box74-${Date.now()}`,antigo=produtos.find(p=>p.id===id),preco=Number(document.querySelector('#product-price').value),precoPromo=document.querySelector('#product-promo-price').value===''?null:Number(document.querySelector('#product-promo-price').value);if(precoPromo&&precoPromo>=preco){adminStatus.textContent='O preço promocional precisa ser menor que o preço normal.';return;}const novo={id,nome:document.querySelector('#product-name').value.trim(),categoria:document.querySelector('#product-category').value.trim(),tamanho:document.querySelector('#product-size').value.trim(),preco,estoque:document.querySelector('#product-stock').value===''?null:Number(document.querySelector('#product-stock').value),precoPromo,promoLabel:document.querySelector('#product-promo-label').value.trim(),foto:antigo?.foto||[0,2],imagem:fotoSelecionada?fotoEmEdicao:(fotoEmEdicao||antigo?.imagem||''),imagePath:antigo?.imagePath||null};const produtosBkp=JSON.parse(JSON.stringify(produtos)),i=produtos.findIndex(p=>p.id===id);if(i<0)produtos.push(novo);else produtos[i]=novo;const ok=await save();if(ok){render();resetForm();}else{produtos=produtosBkp;}});
+    adminForm.addEventListener('submit',async e=>{e.preventDefault();if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}const id=document.querySelector('#product-id').value||`box74-${Date.now()}`,antigo=produtos.find(p=>p.id===id),preco=Number(document.querySelector('#product-price').value),custo=document.querySelector('#product-cost').value===''?0:Number(document.querySelector('#product-cost').value),precoPromo=document.querySelector('#product-promo-price').value===''?null:Number(document.querySelector('#product-promo-price').value);if(precoPromo&&precoPromo>=preco){adminStatus.textContent='O preço promocional precisa ser menor que o preço normal.';return;}const novo={id,nome:document.querySelector('#product-name').value.trim(),categoria:document.querySelector('#product-category').value.trim(),tamanho:document.querySelector('#product-size').value.trim(),preco,custo,estoque:document.querySelector('#product-stock').value===''?null:Number(document.querySelector('#product-stock').value),precoPromo,promoLabel:document.querySelector('#product-promo-label').value.trim(),foto:antigo?.foto||[0,2],imagem:fotoSelecionada?fotoEmEdicao:(fotoEmEdicao||antigo?.imagem||''),imagePath:antigo?.imagePath||null};const produtosBkp=JSON.parse(JSON.stringify(produtos)),i=produtos.findIndex(p=>p.id===id);if(i<0)produtos.push(novo);else produtos[i]=novo;const ok=await save();if(ok){render();resetForm();}else{produtos=produtosBkp;}});
     adminList.addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';return;}editProduct(edit.dataset.edit);}if(del){if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: autenticação administrativa no Supabase obrigatória.';alert('Ação bloqueada: é necessário estar autenticado como administrador no Supabase para excluir produtos.');return;}if(confirm('Excluir este produto do catálogo?')){const idDel=del.dataset.delete;const p=produtos.find(x=>x.id===idDel);const {error}=await supabaseClient.from('box74_products').delete().eq('id',idDel);if(error){adminStatus.textContent=`Não foi possível excluir: ${error.message}`;return;}let msg='Produto excluído com sucesso do catálogo remoto.';if(p?.imagePath){const {error:storageErr}=await supabaseClient.storage.from('box74-products').remove([p.imagePath]);if(storageErr){console.warn(`Aviso: falha ao remover imagem do Storage (${p.imagePath}):`,storageErr.message||storageErr);msg='Produto excluído do catálogo, mas a imagem associada não pôde ser removida do Storage.';}}produtos=produtos.filter(x=>x.id!==idDel);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(produtos));}catch{}adminStatus.textContent=msg;render();resetForm();}}});
     document.querySelector('#export-data').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({version:1,products:produtos},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-catalogo-box74.json';a.click();URL.revokeObjectURL(a.href);});
     document.querySelector('#import-trigger').addEventListener('click',()=>{if(!supabaseClient||!isAdmin){adminStatus.textContent='Ação não permitida: faça login como administrador no Supabase.';return;}document.querySelector('#import-data').click();});
@@ -572,35 +735,54 @@
 
     const tabOrdersBtn=document.querySelector('#tab-orders-btn'),
           tabStockBtn=document.querySelector('#tab-stock-btn'),
+          tabFinanceBtn=document.querySelector('#tab-finance-btn'),
           tabProductsBtn=document.querySelector('#tab-products-btn'),
           ordersSection=document.querySelector('#admin-orders-section'),
           stockSection=document.querySelector('#admin-stock-section'),
+          financeSection=document.querySelector('#admin-finance-section'),
           productsSection=document.querySelector('#admin-products-section');
 
     tabOrdersBtn?.addEventListener('click',()=>{
       tabOrdersBtn.classList.add('active');
       tabStockBtn?.classList.remove('active');
+      tabFinanceBtn?.classList.remove('active');
       tabProductsBtn.classList.remove('active');
       ordersSection?.classList.remove('hidden');
       stockSection?.classList.add('hidden');
+      financeSection?.classList.add('hidden');
       productsSection?.classList.add('hidden');
     });
     tabStockBtn?.addEventListener('click',()=>{
       tabStockBtn.classList.add('active');
       tabOrdersBtn?.classList.remove('active');
+      tabFinanceBtn?.classList.remove('active');
       tabProductsBtn.classList.remove('active');
       stockSection?.classList.remove('hidden');
       ordersSection?.classList.add('hidden');
+      financeSection?.classList.add('hidden');
       productsSection?.classList.add('hidden');
       renderStock();
+    });
+    tabFinanceBtn?.addEventListener('click',()=>{
+      tabFinanceBtn.classList.add('active');
+      tabOrdersBtn?.classList.remove('active');
+      tabStockBtn?.classList.remove('active');
+      tabProductsBtn.classList.remove('active');
+      financeSection?.classList.remove('hidden');
+      ordersSection?.classList.add('hidden');
+      stockSection?.classList.add('hidden');
+      productsSection?.classList.add('hidden');
+      renderFinance();
     });
     tabProductsBtn?.addEventListener('click',()=>{
       tabProductsBtn.classList.add('active');
       tabOrdersBtn?.classList.remove('active');
       tabStockBtn?.classList.remove('active');
+      tabFinanceBtn?.classList.remove('active');
       productsSection?.classList.remove('hidden');
       ordersSection?.classList.add('hidden');
       stockSection?.classList.add('hidden');
+      financeSection?.classList.add('hidden');
     });
 
     let stockMovements=[];
@@ -1040,6 +1222,389 @@
     document.querySelector('#refresh-stock-movements')?.addEventListener('click',async()=>{
       await loadStockMovements();
       renderStockMovementsTable();
+    });
+
+    // MÓDULO FINANCEIRO BOX74
+    let despesas=[];
+    let filtroPeriodoFinanceiro='todos';
+
+    async function loadExpenses(){
+      if(!supabaseClient||!isAdmin)return [];
+      try{
+        let q=supabaseClient.from('box74_expenses').select('*').order('expense_date',{ascending:false});
+        if(typeof q.limit==='function')q=q.limit(200);
+        const {data,error}=await q;
+        if(error)throw error;
+        despesas=Array.isArray(data)?data:[];
+        return despesas;
+      }catch(err){
+        console.warn('Erro ao carregar despesas:',err.message||err);
+        return [];
+      }
+    }
+
+    async function addExpense(category,description,amount,expenseDate,notes=''){
+      if(!supabaseClient||!isAdmin)return false;
+      const id=`exp-${Date.now()}-${Math.random().toString(36).substring(2,6)}`;
+      const {error}=await supabaseClient.from('box74_expenses').insert({
+        id,
+        category,
+        description,
+        amount:Number(amount),
+        expense_date:expenseDate,
+        notes:notes||null
+      });
+      if(error)throw error;
+      despesas.unshift({
+        id,
+        category,
+        description,
+        amount:Number(amount),
+        expense_date:expenseDate,
+        notes:notes||null,
+        created_at:new Date().toISOString()
+      });
+      return true;
+    }
+
+    async function deleteExpense(id){
+      if(!supabaseClient||!isAdmin)return false;
+      const {error}=await supabaseClient.from('box74_expenses').delete().eq('id',id);
+      if(error)throw error;
+      despesas=despesas.filter(d=>d.id!==id);
+      return true;
+    }
+
+    function dataNoPeriodo(dt,periodo){
+      if(periodo==='todos')return true;
+      const d=new Date(dt);
+      if(isNaN(d.getTime()))return false;
+      const agora=new Date();
+      if(periodo==='hoje'){
+        return d.toDateString()===agora.toDateString();
+      }
+      if(periodo==='7dias'){
+        return d.getTime()>=agora.getTime()-7*24*60*60*1000;
+      }
+      if(periodo==='mes'){
+        return d.getMonth()===agora.getMonth()&&d.getFullYear()===agora.getFullYear();
+      }
+      return true;
+    }
+
+    function calcularFinanceiro(){
+      const pedidosNoPeriodo=pedidos.filter(o=>o.status!=='Cancelado'&&dataNoPeriodo(o.created_at,filtroPeriodoFinanceiro));
+      let faturamento=0;
+      let cmv=0;
+
+      for(const o of pedidosNoPeriodo){
+        faturamento+=Number(o.total)||0;
+        if(Array.isArray(o.items)){
+          for(const it of o.items){
+            const prod=produtos.find(p=>p.id===it.id||p.nome.toLowerCase()===(it.nome||'').toLowerCase());
+            const custoUnit=prod&&prod.custo!=null?Number(prod.custo):0;
+            const qtd=Number(it.quantidade)||0;
+            cmv+=(custoUnit*qtd);
+          }
+        }
+      }
+
+      const lucroBruto=faturamento-cmv;
+      const margemBrutaPercent=faturamento>0?(lucroBruto/faturamento)*100:0;
+
+      const despesasNoPeriodo=despesas.filter(d=>dataNoPeriodo(d.expense_date+'T12:00:00',filtroPeriodoFinanceiro));
+      const totalDespesas=despesasNoPeriodo.reduce((s,d)=>s+(Number(d.amount)||0),0);
+
+      const resultadoLiquido=lucroBruto-totalDespesas;
+      const margemLiquidaPercent=faturamento>0?(resultadoLiquido/faturamento)*100:0;
+
+      return {
+        faturamento,
+        cmv,
+        lucroBruto,
+        margemBrutaPercent,
+        totalDespesas,
+        resultadoLiquido,
+        margemLiquidaPercent,
+        pedidosCount:pedidosNoPeriodo.length,
+        despesasCount:despesasNoPeriodo.length
+      };
+    }
+
+    function calcularMaisLucrativos(){
+      const map={};
+      const pedidosNoPeriodo=pedidos.filter(o=>o.status!=='Cancelado'&&dataNoPeriodo(o.created_at,filtroPeriodoFinanceiro));
+
+      for(const o of pedidosNoPeriodo){
+        if(!Array.isArray(o.items))continue;
+        for(const it of o.items){
+          const key=it.id||it.nome;
+          if(!map[key]){
+            const prod=produtos.find(p=>p.id===it.id||p.nome.toLowerCase()===(it.nome||'').toLowerCase());
+            map[key]={
+              id:it.id,
+              nome:it.nome,
+              tamanho:it.tamanho||'',
+              custoUnit:prod&&prod.custo!=null?Number(prod.custo):0,
+              quantidade:0,
+              faturamento:0,
+              cmv:0,
+              lucroBruto:0,
+              margemPercent:0
+            };
+          }
+          const qtd=Number(it.quantidade)||0;
+          const subtotal=Number(it.subtotal)||(Number(it.preco||0)*qtd);
+          map[key].quantidade+=qtd;
+          map[key].faturamento+=subtotal;
+          map[key].cmv+=(map[key].custoUnit*qtd);
+        }
+      }
+
+      const lista=Object.values(map);
+      for(const item of lista){
+        item.lucroBruto=item.faturamento-item.cmv;
+        item.margemPercent=item.faturamento>0?(item.lucroBruto/item.faturamento)*100:0;
+      }
+      return lista.sort((a,b)=>b.lucroBruto-a.lucroBruto);
+    }
+
+    function renderFinance(){
+      if(!isAdmin)return;
+      const f=calcularFinanceiro();
+
+      const mRev=document.querySelector('#fin-metric-revenue');
+      if(mRev)mRev.textContent=moeda.format(f.faturamento);
+      const mCmv=document.querySelector('#fin-metric-cmv');
+      if(mCmv)mCmv.textContent=moeda.format(f.cmv);
+      const mGross=document.querySelector('#fin-metric-gross-profit');
+      if(mGross){
+        mGross.textContent=moeda.format(f.lucroBruto);
+        mGross.style.color=f.lucroBruto>=0?'#34d399':'#f87171';
+      }
+      const mGrossPct=document.querySelector('#fin-metric-gross-margin');
+      if(mGrossPct)mGrossPct.textContent=`${f.margemBrutaPercent.toFixed(1)}% margem bruta`;
+
+      const mExp=document.querySelector('#fin-metric-expenses');
+      if(mExp)mExp.textContent=moeda.format(f.totalDespesas);
+
+      const mNet=document.querySelector('#fin-metric-net-result');
+      if(mNet){
+        mNet.textContent=moeda.format(f.resultadoLiquido);
+        mNet.style.color=f.resultadoLiquido>=0?'#34d399':'#f87171';
+      }
+      const mNetPct=document.querySelector('#fin-metric-net-margin');
+      if(mNetPct)mNetPct.textContent=`${f.margemLiquidaPercent.toFixed(1)}% margem líquida`;
+
+      const cardNet=document.querySelector('#fin-card-net');
+      if(cardNet){
+        cardNet.style.borderColor=f.resultadoLiquido>=0?'#2a5038':'#5a1c1c';
+        cardNet.style.background=f.resultadoLiquido>=0?'#12241b':'#241212';
+      }
+
+      renderTopLucrativeTable();
+      renderProductMarginsTable();
+      renderExpensesTable();
+
+      const expDateInput=document.querySelector('#expense-date');
+      if(expDateInput&&!expDateInput.value){
+        expDateInput.value=new Date().toISOString().split('T')[0];
+      }
+    }
+
+    function renderTopLucrativeTable(){
+      const tbody=document.querySelector('#top-lucrative-tbody');
+      if(!tbody)return;
+      const ranking=calcularMaisLucrativos();
+      if(!ranking.length){
+        tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:16px">Nenhuma venda registrada para o período selecionado.</td></tr>';
+        return;
+      }
+      tbody.innerHTML=ranking.map((r,idx)=>`
+        <tr>
+          <td><b style="color:var(--lime)">${idx+1}º</b></td>
+          <td><b>${esc(r.nome)}</b>${r.tamanho?`<br><small style="color:var(--muted)">${esc(r.tamanho)}</small>`:''}</td>
+          <td><b>${r.quantidade}</b></td>
+          <td>${moeda.format(r.faturamento)}</td>
+          <td style="color:#f87171">${moeda.format(r.cmv)}</td>
+          <td style="font-weight:800;color:${r.lucroBruto>=0?'#34d399':'#f87171'}">${moeda.format(r.lucroBruto)}</td>
+          <td><span style="display:inline-block;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;background:#0f2e1e;color:#34d399;border:1px solid #065f46">${r.margemPercent.toFixed(1)}%</span></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderProductMarginsTable(){
+      const tbody=document.querySelector('#product-margins-tbody');
+      if(!tbody)return;
+      const q=(document.querySelector('#search-margins-table')?.value||'').trim().toLowerCase();
+      const filtrados=produtos.filter(p=>!q||p.nome.toLowerCase().includes(q)||(p.categoria||'').toLowerCase().includes(q));
+
+      if(!filtrados.length){
+        tbody.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Nenhum produto encontrado.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML=filtrados.map(p=>{
+        const venda=precoAtual(p);
+        const custo=Number(p.custo)||0;
+        const lucro=venda-custo;
+        const margemPct=venda>0?((lucro/venda)*100):0;
+        return `
+          <tr>
+            <td><b>${esc(p.nome)}</b>${p.tamanho?`<br><small style="color:var(--muted)">${esc(p.tamanho)}</small>`:''}</td>
+            <td><b>${moeda.format(venda)}</b></td>
+            <td style="color:${custo>0?'var(--muted)':'#fbbf24'}">${custo>0?moeda.format(custo):'Não informado (R$ 0,00)'}</td>
+            <td style="font-weight:800;color:${lucro>=0?'#34d399':'#f87171'}">${moeda.format(lucro)}</td>
+            <td><span style="display:inline-block;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:800;background:${margemPct>=40?'#0f2e1e':margemPct>=20?'#382d13':'#3f1414'};color:${margemPct>=40?'#34d399':margemPct>=20?'#f5c455':'#f87171'};border:1px solid ${margemPct>=40?'#065f46':margemPct>=20?'#5a471c':'#7f1d1d'}">${margemPct.toFixed(1)}%</span></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderExpensesTable(){
+      const tbody=document.querySelector('#expenses-tbody');
+      if(!tbody)return;
+      const despesasNoPeriodo=despesas.filter(d=>dataNoPeriodo(d.expense_date+'T12:00:00',filtroPeriodoFinanceiro));
+      const countEl=document.querySelector('#expenses-count-text');
+      if(countEl)countEl.textContent=`${despesasNoPeriodo.length} ${despesasNoPeriodo.length===1?'despesa':'despesas'} no período selecionado`;
+
+      if(!despesasNoPeriodo.length){
+        tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:16px">Nenhuma despesa registrada para o período selecionado.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML=despesasNoPeriodo.map(d=>{
+        const catSlug=(d.category||'outras').toLowerCase();
+        let catClass='expense-badge-outras';
+        if(catSlug.includes('frete'))catClass='expense-badge-frete';
+        else if(catSlug.includes('embalag'))catClass='expense-badge-embalagens';
+        else if(catSlug.includes('taxa'))catClass='expense-badge-taxas';
+        else if(catSlug.includes('market'))catClass='expense-badge-marketing';
+        else if(catSlug.includes('operac'))catClass='expense-badge-operacional';
+
+        const dataFmt=d.expense_date?new Date(d.expense_date+'T12:00:00').toLocaleDateString('pt-BR'):'—';
+
+        return `
+          <tr>
+            <td style="color:var(--muted);font-size:12px">${dataFmt}</td>
+            <td><span class="expense-badge ${catClass}">${esc(d.category)}</span></td>
+            <td><b>${esc(d.description)}</b></td>
+            <td style="font-weight:800;color:#f87171">${moeda.format(Number(d.amount)||0)}</td>
+            <td style="color:var(--muted);font-size:12px">${esc(d.notes||'—')}</td>
+            <td>
+              <button type="button" class="admin-action" data-del-expense="${esc(d.id)}" style="padding:4px 8px;font-size:11px;background:#3f1414;color:#f87171;border-color:#7f1d1d">Excluir</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function exportarRelatorioFinanceiroCSV(){
+      const f=calcularFinanceiro();
+      const ranking=calcularMaisLucrativos();
+      const despesasNoPeriodo=despesas.filter(d=>dataNoPeriodo(d.expense_date+'T12:00:00',filtroPeriodoFinanceiro));
+
+      const periodoLabel=filtroPeriodoFinanceiro==='hoje'?'Hoje':filtroPeriodoFinanceiro==='7dias'?'Últimos 7 dias (Semana)':filtroPeriodoFinanceiro==='mes'?'Este mês':'Todo o histórico';
+      const dataHora=new Date().toLocaleString('pt-BR');
+
+      let csv='\uFEFF'; // UTF-8 BOM
+      csv+='BOX74 - RELATÓRIO FINANCEIRO CONSOLIDADO\n';
+      csv+=`Emissão:;${dataHora}\n`;
+      csv+=`Período Selecionado:;${periodoLabel}\n\n`;
+
+      csv+='1. RESUMO FINANCEIRO CONSOLIDADO\n';
+      csv+='Indicador;Valor\n';
+      csv+=`Faturamento Bruto;${f.faturamento.toFixed(2).replace('.',',')}\n`;
+      csv+=`Custo das Mercadorias Vendidas (CMV);${f.cmv.toFixed(2).replace('.',',')}\n`;
+      csv+=`Lucro Bruto;${f.lucroBruto.toFixed(2).replace('.',',')}\n`;
+      csv+=`Margem Bruta (%);${f.margemBrutaPercent.toFixed(2).replace('.',',')}%\n`;
+      csv+=`Despesas Operacionais;${f.totalDespesas.toFixed(2).replace('.',',')}\n`;
+      csv+=`Resultado Líquido Operacional;${f.resultadoLiquido.toFixed(2).replace('.',',')}\n`;
+      csv+=`Margem Líquida (%);${f.margemLiquidaPercent.toFixed(2).replace('.',',')}%\n`;
+      csv+=`Pedidos Confirmados;${f.pedidosCount}\n`;
+      csv+=`Despesas Registradas;${f.despesasCount}\n\n`;
+
+      csv+='2. DESEMPENHO E LUCRATIVIDADE POR PRODUTO\n';
+      csv+='Posição;Produto;Tamanho;Qtd Vendida;Faturamento (R$);CMV Total (R$);Lucro Bruto (R$);Margem Bruta (%)\n';
+      if(ranking.length){
+        ranking.forEach((r,idx)=>{
+          csv+=`${idx+1};"${r.nome.replace(/"/g,'""')}";"${(r.tamanho||'').replace(/"/g,'""')}";${r.quantidade};${r.faturamento.toFixed(2).replace('.',',')};${r.cmv.toFixed(2).replace('.',',')};${r.lucroBruto.toFixed(2).replace('.',',')};${r.margemPercent.toFixed(2).replace('.',',')}%\n`;
+        });
+      }else{
+        csv+='Nenhuma venda no período;;;;;;;\n';
+      }
+      csv+='\n';
+
+      csv+='3. DESPESAS OPERACIONAIS NO PERÍODO\n';
+      csv+='Data;Categoria;Descrição;Valor (R$);Observações\n';
+      if(despesasNoPeriodo.length){
+        despesasNoPeriodo.forEach(d=>{
+          csv+=`"${d.expense_date||''}";"${(d.category||'').replace(/"/g,'""')}";"${(d.description||'').replace(/"/g,'""')}";${Number(d.amount||0).toFixed(2).replace('.',',')};"${(d.notes||'').replace(/"/g,'""')}"\n`;
+        });
+      }else{
+        csv+='Nenhuma despesa no período;;;;;\n';
+      }
+
+      const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=`relatorio-financeiro-box74-${filtroPeriodoFinanceiro}-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.querySelector('#finance-period')?.addEventListener('change',e=>{
+      filtroPeriodoFinanceiro=e.target.value;
+      renderFinance();
+    });
+    document.querySelector('#refresh-finance')?.addEventListener('click',async()=>{
+      await loadRemoteOrders();
+      await loadExpenses();
+      renderFinance();
+    });
+    document.querySelector('#export-finance-csv')?.addEventListener('click',()=>{
+      exportarRelatorioFinanceiroCSV();
+    });
+    document.querySelector('#search-margins-table')?.addEventListener('input',()=>{
+      renderProductMarginsTable();
+    });
+    document.querySelector('#expense-form')?.addEventListener('submit',async e=>{
+      e.preventDefault();
+      if(!supabaseClient||!isAdmin){
+        alert('Ação restrita a administradores.');
+        return;
+      }
+      const category=document.querySelector('#expense-category').value;
+      const description=document.querySelector('#expense-description').value.trim();
+      const amount=Number(document.querySelector('#expense-amount').value);
+      const date=document.querySelector('#expense-date').value;
+      const notes=document.querySelector('#expense-notes').value.trim();
+      const statusEl=document.querySelector('#expense-status');
+
+      if(statusEl)statusEl.textContent='Salvando despesa operacional…';
+      try{
+        await addExpense(category,description,amount,date,notes);
+        if(statusEl)statusEl.textContent='Despesa salva com sucesso!';
+        document.querySelector('#expense-description').value='';
+        document.querySelector('#expense-amount').value='';
+        document.querySelector('#expense-notes').value='';
+        renderFinance();
+      }catch(err){
+        console.error('Erro ao salvar despesa:',err);
+        if(statusEl)statusEl.textContent=`Erro ao salvar: ${err.message}`;
+      }
+    });
+    document.querySelector('#expenses-table')?.addEventListener('click',async e=>{
+      const btn=e.target.closest('[data-del-expense]');
+      if(!btn)return;
+      const id=btn.dataset.delExpense;
+      if(!confirm('Excluir esta despesa operacional?'))return;
+      try{
+        await deleteExpense(id);
+        renderFinance();
+      }catch(err){
+        alert(`Erro ao excluir: ${err.message}`);
+      }
     });
 
     document.querySelector('#order-form').addEventListener('submit',async e=>{
