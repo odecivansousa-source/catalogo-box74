@@ -28,6 +28,7 @@ class WhatsAppAgent {
 
     // Serviços auxiliares integrados
     this.aiService = options.aiService || new AIService(options.ai || this.config.ai);
+    this.coexistenceService = options.coexistenceService || null;
     this.humanHandoff = options.humanHandoff || new HumanHandoffService({
       ...(this.config.humanSupport || {}),
       ...(options.humanSupport || {}),
@@ -476,6 +477,7 @@ class WhatsAppAgent {
     // Regra 9: Transferência para Atendimento Humano
     if (/\b(atendente|humano|humana|pessoa real|falar com alguém|falar com alguem|suporte humano|atendimento humano)\b/.test(norm)) {
       conv.state = 'transf_humano';
+      conv.last_human_intervention_at = new Date().toISOString();
       await this.saveConversation(conv);
       if (this.humanHandoff) {
         await this.humanHandoff.triggerHandoff(from, {
@@ -490,30 +492,34 @@ class WhatsAppAgent {
       };
     }
 
-    // Se estiver em atendimento humano e o cliente não digitar "menu", a IA silencia
-    if (conv.state === 'transf_humano' || (this.humanHandoff && this.humanHandoff.isSilenced(from))) {
-      if (norm === 'menu' || norm === 'voltar' || norm === 'reiniciar' || norm === 'inicio') {
-        conv.state = 'atendimento_ia';
-        await this.saveConversation(conv);
-        if (this.humanHandoff) {
-          this.humanHandoff.resumeBot(from);
-        }
-        return {
-          response: 'Atendimento automático reiniciado! Como posso ajudar você hoje na BOX74?',
-          state: 'atendimento_ia'
-        };
-      }
-      return { ignored: true, reason: 'in_human_support' };
+    // Verificação de Intervenção Humana (respeitando coexistência e persistência durável no banco)
+    let isUnderHuman = conv.state === 'transf_humano' || (this.humanHandoff && this.humanHandoff.isSilenced(from));
+    if (!isUnderHuman && this.coexistenceService && typeof this.coexistenceService.isCustomerUnderHumanWindow === 'function') {
+      isUnderHuman = await this.coexistenceService.isCustomerUnderHumanWindow(from, this);
     }
 
-    // Comando de Reinício / Menu
+    // Comando de Reinício / Menu - SEMPRE limpa o estado humano persistido e retoma o atendimento
     if (norm === 'menu' || norm === 'reiniciar' || norm === 'inicio' || norm === 'voltar') {
       conv.state = 'atendimento_ia';
+      conv.last_human_intervention_at = null;
       await this.saveConversation(conv);
+      if (this.humanHandoff) {
+        this.humanHandoff.resumeBot(from);
+      }
+      if (this.coexistenceService && typeof this.coexistenceService.clearHumanWindow === 'function') {
+        await this.coexistenceService.clearHumanWindow(from, this);
+      }
       return {
-        response: 'Olá! Sou o assistente virtual da *BOX74 - Produtos de Limpeza*.\n\nComo posso te ajudar?\n1. Ver opções do *Catálogo de produtos*\n2. Receber uma *Recomendação* para sua limpeza\n3. Ver seu *Carrinho de compras*\n4. Falar com *Atendente humano*',
+        response: isUnderHuman
+          ? 'Atendimento automático reiniciado! Como posso ajudar você hoje na BOX74?'
+          : 'Olá! Sou o assistente virtual da *BOX74 - Produtos de Limpeza*.\n\nComo posso te ajudar?\n1. Ver opções do *Catálogo de produtos*\n2. Receber uma *Recomendação* para sua limpeza\n3. Ver seu *Carrinho de compras*\n4. Falar com *Atendente humano*',
         state: 'atendimento_ia'
       };
+    }
+
+    // Se estiver sob atendimento humano e NÃO digitou "menu", a IA silencia
+    if (isUnderHuman) {
+      return { ignored: true, reason: 'in_human_support' };
     }
 
     // ==========================================

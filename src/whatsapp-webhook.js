@@ -26,6 +26,10 @@ function createWebhookServer(agent = new WhatsAppAgent(), options = {}) {
     enabled: currentConfig.meta?.coexistenceEnabled
   });
 
+  if (agent && !agent.coexistenceService) {
+    agent.coexistenceService = coexistenceService;
+  }
+
   const embeddedSignupService = options.embeddedSignupService || new MetaEmbeddedSignupService({
     appId: currentConfig.meta?.appId,
     appSecret: currentConfig.meta?.appSecret,

@@ -191,6 +191,46 @@ async function runTests() {
     assert.strictEqual(threw, true, 'Deve lançar erro e não declarar sucesso falso');
   });
 
+  await itAsync('CredentialsStore impede fallback para anon e falha explicitamente sem service_role', async () => {
+    const anonOnlyStore = new CredentialsStore({
+      supabaseClient: null,
+      supabaseKey: null
+    });
+    anonOnlyStore.serviceRoleKey = null;
+
+    let threw = false;
+    try {
+      await anonOnlyStore.saveCredentials({ wabaId: 'w1', phoneNumberId: 'p1' });
+    } catch (e) {
+      threw = true;
+      assert.ok(e.message.includes('SUPABASE_SERVICE_ROLE_KEY'));
+    }
+    assert.strictEqual(threw, true, 'Deve falhar explicitamente sem service_role');
+  });
+
+  await itAsync('getCredentials() propaga erros de consulta no Supabase sem mascarar', async () => {
+    const errorStore = new CredentialsStore({
+      supabaseClient: {
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              single: () => Promise.resolve({ data: null, error: { code: '42501', message: 'permission denied for table box74_meta_credentials' } })
+            })
+          })
+        })
+      }
+    });
+
+    let threw = false;
+    try {
+      await errorStore.getCredentials();
+    } catch (e) {
+      threw = true;
+      assert.ok(e.message.includes('permission denied'));
+    }
+    assert.strictEqual(threw, true, 'Deve propagar erro em vez de engolir');
+  });
+
   await itAsync('Executa pipeline completo do Embedded Signup e persiste credenciais protegidas', async () => {
     const result = await signupService.processEmbeddedSignup({
       code: 'code_valido_meta',
@@ -274,6 +314,45 @@ async function runTests() {
     // Consulta durável deve manter a IA pausada recuperando o estado persistido no banco
     const isSilencedAfterRestart = await coexistence.isCustomerUnderHumanWindow('5585991112222', mockAgent);
     assert.strictEqual(isSilencedAfterRestart, true, 'Estado de silenciamento deve ser preservado após reinício');
+  });
+
+  await itAsync('Comando MENU limpa estado persistido de atendimento humano e reativa IA', async () => {
+    let mockConv = { phone: '5585991112222', state: 'transf_humano', last_human_intervention_at: new Date().toISOString() };
+    const testAgent = new WhatsAppAgent({
+      supabaseClient: {
+        from: () => ({
+          select: () => ({ order: () => Promise.resolve({ data: [], error: null }) })
+        }),
+        rpc: () => Promise.resolve({ data: true, error: null })
+      }
+    });
+    testAgent.getConversation = async () => mockConv;
+    testAgent.saveConversation = async (c) => { mockConv = c; };
+    testAgent.coexistenceService = coexistence;
+
+    // Coloca cliente na janela recente da coexistência
+    coexistence.recentHumanInterventions.set('5585991112222', Date.now());
+
+    // 1. Mensagem comum deve ser ignorada por estar em atendimento humano
+    const resIgnored = await testAgent.processMessage({
+      from: '5585991112222',
+      text: 'Tem alguém aí?',
+      messageId: 'msg-test-human-1'
+    });
+    assert.strictEqual(resIgnored.ignored, true);
+    assert.strictEqual(resIgnored.reason, 'in_human_support');
+
+    // 2. Envio de MENU deve resetar o estado persistido e reativar a IA
+    const resMenu = await testAgent.processMessage({
+      from: '5585991112222',
+      text: 'MENU',
+      messageId: 'msg-test-menu-1'
+    });
+    assert.strictEqual(resMenu.state, 'atendimento_ia');
+    assert.strictEqual(mockConv.state, 'atendimento_ia');
+    assert.strictEqual(mockConv.last_human_intervention_at, null);
+    assert.strictEqual(coexistence.recentHumanInterventions.has('5585991112222'), false);
+    assert.ok(resMenu.response.includes('Atendimento automático reiniciado'));
   });
 
   // -------------------------------------------------------------

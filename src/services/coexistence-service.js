@@ -112,10 +112,23 @@ class CoexistenceService {
     return false;
   }
 
-  // Limpa janela para reativar bot quando cliente enviar "MENU"
-  clearHumanWindow(customerPhone) {
+  // Limpa janela e reseta estado persistido para reativar bot quando cliente enviar "MENU"
+  async clearHumanWindow(customerPhone, agent = null) {
     const cleanPhone = (customerPhone || '').replace(/\D/g, '');
     this.recentHumanInterventions.delete(cleanPhone);
+
+    if (agent && typeof agent.getConversation === 'function' && typeof agent.saveConversation === 'function') {
+      try {
+        const conv = await agent.getConversation(cleanPhone);
+        if (conv && conv.state === 'transf_humano') {
+          conv.state = 'atendimento_ia';
+          conv.last_human_intervention_at = null;
+          await agent.saveConversation(conv);
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
   }
 }
 

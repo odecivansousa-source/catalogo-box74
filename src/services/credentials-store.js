@@ -1,7 +1,7 @@
 // =====================================================================
 // BOX74 - Armazenamento Seguro de Credenciais Meta WhatsApp
-// Persistência com credenciais de servidor (serviceRoleKey),
-// validação rigorosa de erros e separação de estados (preparado/autorizado/ativo)
+// Persistência estrita com credenciais administrativas de servidor (serviceRoleKey),
+// proibição de fallback para anonKey, validação de erros e segregação de estados
 // =====================================================================
 
 const https = require('https');
@@ -9,21 +9,25 @@ const { config } = require('../config');
 
 class CredentialsStore {
   constructor(options = {}) {
-    this.supabaseUrl = options.supabaseUrl || config.supabase.url;
-    // Utiliza preferencialmente a serviceRoleKey para persistência protegida no backend
-    this.supabaseKey = options.supabaseKey || config.supabase.serviceRoleKey || config.supabase.anonKey;
+    this.supabaseUrl = options.supabaseUrl || config.supabase?.url;
+    // Exclusivamente serviceRoleKey para persistência no backend. NUNCA fallback para anonKey!
+    this.serviceRoleKey = options.supabaseKey || config.supabase?.serviceRoleKey || null;
     this.customClient = options.supabaseClient || null;
     this.inMemoryStore = new Map();
   }
 
-  // Requisição auxiliar ao Supabase REST API
+  // Requisição auxiliar ao Supabase REST API (usa estritamente serviceRoleKey)
   async _supabaseRequest(endpoint, method = 'GET', body = null, headers = {}) {
     if (this.customClient) return null;
+    if (!this.serviceRoleKey) {
+      throw new Error('Falha de segurança: Operação em box74_meta_credentials exige SUPABASE_SERVICE_ROLE_KEY configurada. Fallback para anon é estritamente proibido.');
+    }
+
     return new Promise((resolve, reject) => {
       const url = `${this.supabaseUrl}${endpoint}`;
       const reqHeaders = {
-        'apikey': this.supabaseKey,
-        'Authorization': `Bearer ${this.supabaseKey}`,
+        'apikey': this.serviceRoleKey,
+        'Authorization': `Bearer ${this.serviceRoleKey}`,
         'Content-Type': 'application/json',
         ...headers
       };
@@ -46,6 +50,10 @@ class CredentialsStore {
 
   // Salva ou atualiza as credenciais da Meta com validação de erro estrita
   async saveCredentials({ accessToken, wabaId, phoneNumberId, phoneNumber, status, coexistenceStatus, coexistenceEnabled, metadata = {} }) {
+    if (!this.customClient && !this.serviceRoleKey) {
+      throw new Error('Falha de segurança: Operação de gravação de credenciais Meta exige SUPABASE_SERVICE_ROLE_KEY configurada no backend. Chave anonKey não é permitida.');
+    }
+
     const existing = this.inMemoryStore.get('active_whatsapp_integration') || {};
 
     const record = {
@@ -102,37 +110,46 @@ class CredentialsStore {
     let creds = null;
 
     if (this.customClient) {
-      try {
-        const { data } = await this.customClient
-          .from('box74_meta_credentials')
-          .select('*')
-          .eq('id', 'active_whatsapp_integration')
-          .single();
-        if (data) creds = data;
-      } catch (e) {
-        // Fallback
-      }
-    }
+      const { data, error } = await this.customClient
+        .from('box74_meta_credentials')
+        .select('*')
+        .eq('id', 'active_whatsapp_integration')
+        .single();
 
-    if (!creds) {
+      if (error) {
+        // Erro legítimo de ausência de linha inicial (PGRST116)
+        if (error.code === 'PGRST116' || error.message?.includes('0 rows') || error.message?.includes('JSON object requested, multiple (or no) rows returned')) {
+          creds = null;
+        } else {
+          console.error('[BOX74 CredentialsStore] Erro ao consultar credenciais no Supabase:', error.message);
+          throw new Error(`Falha ao consultar credenciais Meta no Supabase: ${error.message}`);
+        }
+      } else if (data) {
+        creds = data;
+        this.inMemoryStore.set(creds.id, creds);
+      }
+    } else if (this.serviceRoleKey) {
       try {
         const res = await this._supabaseRequest(
           '/rest/v1/box74_meta_credentials?id=eq.active_whatsapp_integration&select=*',
           'GET'
         );
-        if (res.statusCode === 200 && Array.isArray(res.data) && res.data.length > 0) {
-          creds = res.data[0];
+        if (res && res.statusCode >= 300) {
+          const errorDetail = typeof res.data === 'object' ? JSON.stringify(res.data) : String(res.data);
+          console.error(`[BOX74 CredentialsStore] Erro HTTP ${res.statusCode} ao consultar Supabase:`, errorDetail);
+          throw new Error(`Falha ao consultar credenciais Meta no Supabase (HTTP ${res.statusCode}): ${errorDetail}`);
         }
-      } catch (e) {
-        // Fallback
+        if (res && res.statusCode === 200 && Array.isArray(res.data) && res.data.length > 0) {
+          creds = res.data[0];
+          this.inMemoryStore.set(creds.id, creds);
+        }
+      } catch (err) {
+        console.error('[BOX74 CredentialsStore] Falha na leitura de credenciais:', err.message);
+        throw err;
       }
     }
 
-    if (!creds && this.inMemoryStore.has('active_whatsapp_integration')) {
-      creds = this.inMemoryStore.get('active_whatsapp_integration');
-    }
-
-    // Se ainda não existir registro no banco, inicializa com o estado 'preparado'
+    // Se ainda não existir registro persistido no banco, inicializa com o estado 'preparado'
     if (!creds) {
       creds = {
         id: 'active_whatsapp_integration',
